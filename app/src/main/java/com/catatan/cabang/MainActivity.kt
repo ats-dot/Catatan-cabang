@@ -30,6 +30,8 @@ import android.view.ViewConfiguration
 import android.view.ViewGroup
 import android.view.Window
 import android.view.WindowManager
+import android.view.animation.DecelerateInterpolator
+import android.view.animation.OvershootInterpolator
 import android.view.inputmethod.InputMethodManager
 import android.widget.BaseAdapter
 import android.widget.EditText
@@ -154,6 +156,7 @@ class MainActivity : Activity() {
     private var lblServer: TextView? = null
     private var fabData: View? = null
     private var actBar: View? = null
+    private var barOn = false
 
     // ---------- tema hitam putih ----------
     private val bg get() = if (dark) 0xFF000000.toInt() else 0xFFFFFFFF.toInt()
@@ -180,7 +183,7 @@ class MainActivity : Activity() {
         } else if (searchOpen && current != null) {
             toggleSearch()
         } else if (current != null) {
-            showFolders()
+            showFolders(-1)
         } else {
             super.onBackPressed()
         }
@@ -227,7 +230,46 @@ class MainActivity : Activity() {
         t.setPadding(dp(16), dp(10), dp(16), dp(10))
         t.isClickable = true
         t.setOnClickListener { onClick() }
+        pressFx(t)
         return t
+    }
+
+    // efek tekan: mengecil sedikit lalu kembali
+    private fun pressFx(v: View) {
+        v.setOnTouchListener { x, e ->
+            if (e.actionMasked == MotionEvent.ACTION_DOWN) {
+                x.animate().scaleX(0.94f).scaleY(0.94f).setDuration(80).start()
+            } else if (e.actionMasked == MotionEvent.ACTION_UP || e.actionMasked == MotionEvent.ACTION_CANCEL) {
+                x.animate().scaleX(1f).scaleY(1f).setDuration(160).start()
+            }
+            false
+        }
+    }
+
+    // animasi masuk halaman (dir: 1 dari kanan, -1 dari kiri)
+    private fun enter(v: View, dir: Int) {
+        v.alpha = 0f
+        v.translationX = dp(36) * dir.toFloat()
+        v.animate().alpha(1f).translationX(0f).setDuration(240)
+            .setInterpolator(DecelerateInterpolator()).start()
+    }
+
+    // tampil / sembunyi bar dengan geser + pudar
+    private fun setShown(v: View?, on: Boolean) {
+        if (v == null) return
+        if (on) {
+            v.animate().cancel()
+            v.visibility = View.VISIBLE
+            v.alpha = 0f
+            v.translationY = dp(40).toFloat()
+            v.animate().alpha(1f).translationY(0f).setDuration(220)
+                .setInterpolator(DecelerateInterpolator()).start()
+        } else {
+            if (v.visibility != View.VISIBLE) return
+            v.animate().cancel()
+            v.animate().alpha(0f).translationY(dp(40).toFloat()).setDuration(160)
+                .withEndAction { v.visibility = View.GONE }.start()
+        }
     }
 
     private fun input(hint: String, value: String, type: Int): EditText {
@@ -250,6 +292,7 @@ class MainActivity : Activity() {
         f.setOnClickListener { onClick() }
         val iv = IconView(this, kind, if (active) bg else fg, bg)
         f.addView(iv, FrameLayout.LayoutParams(dp(20), dp(20), Gravity.CENTER))
+        pressFx(f)
         return f
     }
 
@@ -326,15 +369,23 @@ class MainActivity : Activity() {
         private var longDone = false
         private var swiped = false
         private var cancelled = false
+        private var dragging = false
         private val slop = ViewConfiguration.get(this@MainActivity).scaledTouchSlop
-        private val swipeDist = dp(56)
+        private val swipeDist = dp(80)
+        private val maxDrag = dp(140).toFloat()
         private val longRun = Runnable {
-            if (!swiped && !cancelled) {
+            if (!swiped && !cancelled && !dragging) {
                 longDone = true
-                v.alpha = 1f
+                release()
                 v.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
                 onLong?.invoke()
             }
+        }
+
+        // kembalikan baris ke posisi & ukuran semula dengan halus
+        private fun release() {
+            v.animate().scaleX(1f).scaleY(1f).translationX(0f).setDuration(220)
+                .setInterpolator(DecelerateInterpolator()).start()
         }
 
         fun attach() {
@@ -342,28 +393,44 @@ class MainActivity : Activity() {
             v.setOnTouchListener { _, e ->
                 when (e.actionMasked) {
                     MotionEvent.ACTION_DOWN -> {
+                        v.animate().cancel()
+                        v.translationX = 0f
                         longDone = false
                         swiped = false
                         cancelled = false
-                        sx = e.x
-                        sy = e.y
-                        v.alpha = 0.7f
+                        dragging = false
+                        sx = e.rawX
+                        sy = e.rawY
+                        v.animate().scaleX(0.98f).scaleY(0.98f).setDuration(90).start()
                         if (onLong != null && selected.isEmpty()) ui.postDelayed(longRun, LONG_PRESS_MS)
                     }
                     MotionEvent.ACTION_MOVE -> {
                         if (!longDone && !swiped && !cancelled) {
-                            val dx = e.x - sx
-                            val dy = e.y - sy
-                            if (abs(dy) > slop && abs(dy) >= abs(dx)) {
+                            val dx = e.rawX - sx
+                            val dy = e.rawY - sy
+                            if (!dragging && abs(dy) > slop && abs(dy) >= abs(dx)) {
                                 cancelled = true
                                 ui.removeCallbacks(longRun)
-                                v.alpha = 1f
-                            } else if (onSwipe != null && dx < -swipeDist && abs(dx) > abs(dy) * 1.5f) {
-                                swiped = true
-                                ui.removeCallbacks(longRun)
-                                v.alpha = 1f
-                                v.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
-                                onSwipe.invoke()
+                                release()
+                            } else if (onSwipe != null && dx < -slop && abs(dx) > abs(dy)) {
+                                // baris ikut jari ke kiri
+                                if (!dragging) {
+                                    dragging = true
+                                    ui.removeCallbacks(longRun)
+                                    v.animate().cancel()
+                                    v.scaleX = 1f
+                                    v.scaleY = 1f
+                                    v.parent?.requestDisallowInterceptTouchEvent(true)
+                                }
+                                var tx = dx * 0.8f
+                                if (tx < -maxDrag) tx = -maxDrag
+                                v.translationX = tx
+                                if (dx < -swipeDist) {
+                                    swiped = true
+                                    v.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+                                    onSwipe.invoke()
+                                    release()
+                                }
                             } else if (abs(dx) > slop) {
                                 ui.removeCallbacks(longRun)
                             }
@@ -371,16 +438,16 @@ class MainActivity : Activity() {
                     }
                     MotionEvent.ACTION_UP -> {
                         ui.removeCallbacks(longRun)
-                        v.alpha = 1f
-                        val dx = e.x - sx
-                        val dy = e.y - sy
-                        if (!longDone && !swiped && !cancelled && abs(dx) <= slop * 2 && abs(dy) <= slop * 2) {
+                        release()
+                        val dx = e.rawX - sx
+                        val dy = e.rawY - sy
+                        if (!longDone && !swiped && !cancelled && !dragging && abs(dx) <= slop * 2 && abs(dy) <= slop * 2) {
                             onTap?.invoke()
                         }
                     }
                     MotionEvent.ACTION_CANCEL -> {
                         ui.removeCallbacks(longRun)
-                        v.alpha = 1f
+                        release()
                     }
                 }
                 false
@@ -391,7 +458,7 @@ class MainActivity : Activity() {
     // =====================================================
     // HALAMAN 1: DAFTAR FOLDER
     // =====================================================
-    private fun showFolders() {
+    private fun showFolders(dir: Int = 0) {
         current = null
         selected.clear()
         searchOpen = false
@@ -434,6 +501,7 @@ class MainActivity : Activity() {
         adapterF = ad
         emptyF = em
         setContentView(col)
+        if (dir != 0) enter(col, dir)
         refreshFolders()
     }
 
@@ -518,7 +586,7 @@ class MainActivity : Activity() {
         searchOpen = false
         query = ""
         searchField = 0
-        showData(f)
+        showData(f, 1)
     }
 
     private fun folderOptions(f: Folder) {
@@ -588,9 +656,10 @@ class MainActivity : Activity() {
     // =====================================================
     // HALAMAN 2: DATA AKUN
     // =====================================================
-    private fun showData(f: Folder) {
+    private fun showData(f: Folder, dir: Int = 0) {
         current = f
         selected.clear()
+        barOn = false
         applyWindow()
         val col = column()
 
@@ -664,13 +733,19 @@ class MainActivity : Activity() {
         ab.setPadding(dp(10), dp(10), dp(10), dp(10))
         val pe = pill("Edit", true) { bulkEdit() }
         pe.textSize = 15f
+        val pc = pill("Salin", false) { copySelected() }
+        pc.textSize = 15f
         val pd = pill("Hapus", false) { bulkDelete() }
         pd.textSize = 15f
         val pel = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
-        pel.rightMargin = dp(5)
+        pel.rightMargin = dp(4)
+        val pcl = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+        pcl.leftMargin = dp(4)
+        pcl.rightMargin = dp(4)
         val pdl = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
-        pdl.leftMargin = dp(5)
+        pdl.leftMargin = dp(4)
         ab.addView(pe, pel)
+        ab.addView(pc, pcl)
         ab.addView(pd, pdl)
         ab.visibility = View.GONE
         val abp = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
@@ -685,6 +760,7 @@ class MainActivity : Activity() {
         fabData = fb
         actBar = ab
         setContentView(col)
+        if (dir != 0) enter(col, dir)
         buildTop()
         buildSearch()
         refreshData()
@@ -705,7 +781,7 @@ class MainActivity : Activity() {
             th.addView(t, tp)
             th.addView(pill("Pilih semua", false) { toggleAll() })
         } else {
-            th.addView(iconBtn(0, false) { showFolders() }, LinearLayout.LayoutParams(dp(40), dp(40)))
+            th.addView(iconBtn(0, false) { showFolders(-1) }, LinearLayout.LayoutParams(dp(40), dp(40)))
             val t = label(f.name, 20f, fg, true)
             t.isSingleLine = true
             t.ellipsize = TextUtils.TruncateAt.END
@@ -719,8 +795,10 @@ class MainActivity : Activity() {
 
     private fun updateBars() {
         val sel = selected.isNotEmpty()
-        fabData?.visibility = if (sel) View.GONE else View.VISIBLE
-        actBar?.visibility = if (sel) View.VISIBLE else View.GONE
+        if (sel == barOn) return
+        barOn = sel
+        setShown(fabData, !sel)
+        setShown(actBar, sel)
     }
 
     private fun onSelectionChanged() {
@@ -748,6 +826,10 @@ class MainActivity : Activity() {
             return
         }
         sh.visibility = View.VISIBLE
+        sh.alpha = 0f
+        sh.translationY = -dp(10).toFloat()
+        sh.animate().alpha(1f).translationY(0f).setDuration(220)
+            .setInterpolator(DecelerateInterpolator()).start()
         val et = input("Cari ${fieldNames[searchField].lowercase()}", query, searchType())
         et.isSingleLine = true
         et.background = shape(surface, 14, fg)
@@ -873,6 +955,7 @@ class MainActivity : Activity() {
             tvNo.setTextColor(sub)
             tvNo.typeface = Typeface.DEFAULT_BOLD
             left.addView(tvNo, FrameLayout.LayoutParams(-2, -2))
+            chk.visibility = View.GONE
             left.addView(chk, FrameLayout.LayoutParams(dp(22), dp(22)))
             card.addView(left, LinearLayout.LayoutParams(dp(34), ViewGroup.LayoutParams.WRAP_CONTENT))
 
@@ -936,7 +1019,18 @@ class MainActivity : Activity() {
             card.background = if (sel) shape(selSurface, 16, fg, 2) else shape(surface, 16, line)
             tvNo.text = (p + 1).toString()
             tvNo.visibility = if (sel) View.GONE else View.VISIBLE
+            val wasSel = chk.visibility == View.VISIBLE
             chk.visibility = if (sel) View.VISIBLE else View.GONE
+            if (sel && !wasSel) {
+                chk.scaleX = 0f
+                chk.scaleY = 0f
+                chk.animate().scaleX(1f).scaleY(1f).setDuration(260)
+                    .setInterpolator(OvershootInterpolator()).start()
+            } else {
+                chk.animate().cancel()
+                chk.scaleX = 1f
+                chk.scaleY = 1f
+            }
             tvEmail.text = r.email
             tvServer.text = r.server
             tvServer.visibility = if (r.server.isBlank()) View.GONE else View.VISIBLE
@@ -959,6 +1053,11 @@ class MainActivity : Activity() {
             w.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
         }
         d.show()
+        content.alpha = 0f
+        content.scaleX = 0.92f
+        content.scaleY = 0.92f
+        content.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(200)
+            .setInterpolator(DecelerateInterpolator()).start()
         return d
     }
 
@@ -1015,6 +1114,10 @@ class MainActivity : Activity() {
             w.attributes = a
         }
         d.show()
+        b.alpha = 0f
+        b.translationY = -dp(10).toFloat()
+        b.animate().alpha(1f).translationY(0f).setDuration(180)
+            .setInterpolator(DecelerateInterpolator()).start()
     }
 
     private fun menuData() {
@@ -1051,12 +1154,7 @@ class MainActivity : Activity() {
         if (rec != null) {
             row.addView(pill("Hapus", false) {
                 d?.dismiss()
-                sheet("Hapus data?", rec.email, listOf(Triple("Hapus", true) {
-                    f.items.remove(rec)
-                    selected.remove(rec)
-                    save()
-                    refreshData()
-                }))
+                confirmWipe(f, listOf(rec)) {}
             })
         }
         row.addView(View(this), LinearLayout.LayoutParams(0, 1, 1f))
@@ -1173,14 +1271,64 @@ class MainActivity : Activity() {
         val f = current ?: return
         val targets = ArrayList<Rec>(selected)
         if (targets.isEmpty()) return
-        sheet("Hapus ${targets.size} akun?", "Akun terpilih akan dihapus permanen.",
-            listOf(Triple("Hapus", true) {
-                f.items.removeAll(targets.toSet())
-                selected.clear()
-                save()
-                refreshData()
-                onSelectionChanged()
-            }))
+        confirmWipe(f, targets) {
+            selected.clear()
+            onSelectionChanged()
+        }
+    }
+
+    private fun isEmptyData(r: Rec) = r.server.isBlank() && r.level.isBlank() && r.note.isBlank()
+
+    // Hapus = kosongkan server, level, keterangan (email tetap).
+    // Akun yang datanya sudah kosong, kalau dihapus lagi, baru hilang dari daftar.
+    private fun confirmWipe(f: Folder, targets: List<Rec>, after: () -> Unit) {
+        var clear = 0
+        for (r in targets) if (!isEmptyData(r)) clear++
+        val remove = targets.size - clear
+        val msg = if (remove == 0) {
+            "Server, level, dan keterangan $clear akun akan dikosongkan. Email tetap ada."
+        } else if (clear == 0) {
+            "$remove akun yang datanya sudah kosong akan dihapus dari daftar."
+        } else {
+            "Server, level, dan keterangan $clear akun akan dikosongkan (email tetap ada). $remove akun yang sudah kosong akan dihapus dari daftar."
+        }
+        sheet("Hapus ${targets.size} akun?", msg, listOf(Triple("Hapus", true) {
+            for (r in targets) {
+                if (isEmptyData(r)) {
+                    f.items.remove(r)
+                    selected.remove(r)
+                } else {
+                    r.server = ""
+                    r.level = ""
+                    r.note = ""
+                }
+            }
+            save()
+            refreshData()
+            after()
+        }))
+    }
+
+    // Salin akun terpilih: baris yang kosong dilewati
+    private fun copySelected() {
+        val f = current ?: return
+        val sb = StringBuilder()
+        var n = 0
+        for (r in f.items) {
+            if (!selected.contains(r)) continue
+            val lines = ArrayList<String>()
+            if (r.email.isNotBlank()) lines.add("email:${r.email}")
+            if (r.server.isNotBlank()) lines.add("server:${r.server}")
+            if (r.level.isNotBlank()) lines.add("level:${r.level}")
+            if (r.note.isNotBlank()) lines.add("keterangan:${r.note}")
+            if (n > 0) sb.append("\n\n")
+            sb.append(lines.joinToString("\n"))
+            n++
+        }
+        if (n == 0) return
+        val cm = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        cm.setPrimaryClip(ClipData.newPlainText("Catatan Cabang", sb.toString()))
+        toast("$n akun disalin")
     }
 
     // ---------- aksi lain ----------
