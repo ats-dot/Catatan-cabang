@@ -900,7 +900,10 @@ class MainActivity : Activity() {
                     2 -> r.level
                     else -> r.note
                 }
-                if (!v.contains(q, true)) continue
+                // kolom kosong dianggap "0" / "nol" / "kosong"
+                val ql = q.lowercase()
+                val emptyHit = v.isBlank() && (ql == "0" || ql == "nol" || ql == "kosong")
+                if (!emptyHit && !v.contains(q, true)) continue
             }
             shown.add(r)
         }
