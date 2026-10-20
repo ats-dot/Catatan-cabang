@@ -32,6 +32,7 @@ import android.view.Window
 import android.view.WindowManager
 import android.view.animation.DecelerateInterpolator
 import android.view.animation.OvershootInterpolator
+import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
 import android.widget.BaseAdapter
 import android.widget.EditText
@@ -103,6 +104,10 @@ class IconView(
                 path.moveTo(9f, 5f); path.lineTo(16f, 12f); path.lineTo(9f, 19f)
                 c.drawPath(path, p)
             }
+            7 -> { // centang (konfirmasi)
+                path.moveTo(5f, 12.5f); path.lineTo(10f, 17.5f); path.lineTo(19f, 7f)
+                c.drawPath(path, p)
+            }
             6 -> { // centang dalam lingkaran
                 p.style = Paint.Style.FILL
                 c.drawCircle(12f, 12f, 11f, p)
@@ -134,7 +139,9 @@ class MainActivity : Activity() {
     private var dark = true
     private var searchOpen = false
     private var searchField = 0          // 0 email, 1 server, 2 level, 3 keterangan
-    private var query = ""
+    private var query = ""               // teks yang sedang diketik
+    private var applied = false          // sudah dikonfirmasi (tekan centang)?
+    private var appliedQ = ""            // teks yang dipakai saat dikonfirmasi
     private var pendingAll = false
     private val fieldNames = arrayOf("Email", "Server", "Level", "Keterangan")
 
@@ -463,6 +470,8 @@ class MainActivity : Activity() {
         selected.clear()
         searchOpen = false
         query = ""
+        applied = false
+        appliedQ = ""
         applyWindow()
         val col = column()
 
@@ -585,6 +594,8 @@ class MainActivity : Activity() {
     private fun openFolder(f: Folder) {
         searchOpen = false
         query = ""
+        applied = false
+        appliedQ = ""
         searchField = 0
         showData(f, 1)
     }
@@ -833,13 +844,29 @@ class MainActivity : Activity() {
         val et = input("Cari ${fieldNames[searchField].lowercase()}", query, searchType())
         et.isSingleLine = true
         et.background = shape(surface, 14, fg)
-        et.addTextChangedListener(watcher { query = it; refreshData() })
+        et.addTextChangedListener(watcher {
+            query = it
+            // teks diubah setelah dikonfirmasi: kembali tampil semua sampai dikonfirmasi lagi
+            if (applied) {
+                applied = false
+                appliedQ = ""
+                refreshData()
+            }
+        })
+        et.imeOptions = EditorInfo.IME_ACTION_SEARCH
+        et.setOnEditorActionListener { _, actionId, _ ->
+            if (actionId == EditorInfo.IME_ACTION_SEARCH) {
+                applySearch()
+                true
+            } else {
+                false
+            }
+        }
         searchEt = et
         val row = LinearLayout(this)
         row.orientation = LinearLayout.HORIZONTAL
         row.gravity = Gravity.CENTER_VERTICAL
         row.addView(et, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        row.addView(iconBtn(3, false) { et.setText("") }, iconLp())
         sh.addView(row)
 
         val hs = HorizontalScrollView(this)
@@ -856,6 +883,10 @@ class MainActivity : Activity() {
                 et.inputType = searchType()
                 et.hint = "Cari ${fieldNames[i].lowercase()}"
                 et.setText("")
+                query = ""
+                applied = false
+                appliedQ = ""
+                refreshData()
             }
             list.add(c)
             val cp = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
@@ -866,8 +897,19 @@ class MainActivity : Activity() {
         sh.addView(hs, lp(10))
     }
 
+    // konfirmasi pencarian (tombol centang / tombol cari di keyboard)
+    private fun applySearch() {
+        applied = true
+        appliedQ = query
+        val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+        imm.hideSoftInputFromWindow(window.decorView.windowToken, 0)
+        refreshData()
+    }
+
     private fun toggleSearch() {
         searchOpen = !searchOpen
+        applied = false
+        appliedQ = ""
         val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
         if (!searchOpen) {
             query = ""
@@ -890,25 +932,36 @@ class MainActivity : Activity() {
     // ---------- filter + total ----------
     private fun refreshData() {
         val f = current ?: return
-        val q = query.trim()
+        val q = appliedQ.trim()
+        val active = searchOpen && applied
         shown.clear()
         for (r in f.items) {
-            if (q.isNotEmpty()) {
+            if (active) {
                 val v = when (searchField) {
                     0 -> r.email
                     1 -> r.server
                     2 -> r.level
                     else -> r.note
                 }
-                // kolom kosong dianggap "0" / "nol" / "kosong"
-                val ql = q.lowercase()
-                val emptyHit = v.isBlank() && (ql == "0" || ql == "nol" || ql == "kosong")
-                if (!emptyHit && !v.contains(q, true)) continue
+                if (q.isEmpty()) {
+                    // dikonfirmasi tanpa mengetik: tampilkan yang kolomnya kosong
+                    if (v.isNotBlank()) continue
+                } else {
+                    val ql = q.lowercase()
+                    val vl = v.trim().lowercase()
+                    val zero = ql == "0" || ql == "nol" || ql == "kosong"
+                    if (zero) {
+                        // 0 / nol / kosong: yang kosong ikut keluar, sama dengan yang tertulis 0/nol/kosong
+                        if (!(vl.isEmpty() || vl == "0" || vl == "nol" || vl == "kosong")) continue
+                    } else if (!v.contains(q, true)) {
+                        continue
+                    }
+                }
             }
             shown.add(r)
         }
         adapterD?.notifyDataSetChanged()
-        val searching = q.isNotEmpty()
+        val searching = active
         statAkun?.text = shown.size.toString()
         statServer?.text = sumServer(shown).toString()
         lblAkun?.text = if (searching) "AKUN DICARI" else "AKUN"
@@ -1183,7 +1236,7 @@ class MainActivity : Activity() {
             }
             save()
             refreshData()
-            if (rec == null && query.isBlank() && shown.isNotEmpty()) lvData?.setSelection(shown.size - 1)
+            if (rec == null && !(searchOpen && applied) && shown.isNotEmpty()) lvData?.setSelection(shown.size - 1)
             d?.dismiss()
         }, pSave)
         b.addView(row, lp(18))
@@ -1337,7 +1390,7 @@ class MainActivity : Activity() {
     // ---------- aksi lain ----------
     private fun copyFormat() {
         val f = current ?: return
-        val list: List<Rec> = if (query.isNotBlank()) shown else f.items
+        val list: List<Rec> = if (searchOpen && applied) shown else f.items
         if (list.isEmpty()) {
             toast("Tidak ada data")
             return
