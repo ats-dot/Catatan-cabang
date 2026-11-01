@@ -31,6 +31,7 @@ import android.text.InputType
 import android.text.SpannableStringBuilder
 import android.text.Spanned
 import android.text.style.ForegroundColorSpan
+import android.text.style.StyleSpan
 import android.text.TextUtils
 import android.text.TextWatcher
 import android.view.Gravity
@@ -184,6 +185,9 @@ class MainActivity : Activity() {
     private var tabThumbW = 0f
     private val tabLabels = ArrayList<TextView>()
     private var searchBtn: FrameLayout? = null
+    private var sumLine: TextView? = null
+    private var sumLegend: TextView? = null
+    private var sumBar: LinearLayout? = null
     private val argb = ArgbEvaluator()
 
     // bukti kirim
@@ -619,6 +623,7 @@ class MainActivity : Activity() {
         val a = ValueAnimator.ofFloat(from, to)
         a.duration = (140 + 340 * abs(to - from)).toLong()
         a.interpolator = iosCurve()
+        homeView?.visibility = View.VISIBLE
         layers(true)
         a.addUpdateListener { applyNav(it.animatedValue as Float) }
         onAnimDone(a) { finishNav(to) }
@@ -800,20 +805,26 @@ class MainActivity : Activity() {
 
         val pg = HomePager(this)
         val p0 = FrameLayout(this)
+        val col0 = LinearLayout(this)
+        col0.orientation = LinearLayout.VERTICAL
+        col0.addView(buildSummary(), LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        val body0 = FrameLayout(this)
         val lv = ListView(this)
         styleList(lv)
         val ad = FolderAdapter()
         lv.adapter = ad
-        p0.addView(lv, FrameLayout.LayoutParams(-1, -1))
+        body0.addView(lv, FrameLayout.LayoutParams(-1, -1))
         val em = label("", 14f, sub, false)
         em.gravity = Gravity.CENTER
-        p0.addView(em, FrameLayout.LayoutParams(-1, -1))
+        body0.addView(em, FrameLayout.LayoutParams(-1, -1))
         lv.emptyView = em
         val fb = fab("+  Akun") { askAccount() }
         val fp = FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
         fp.gravity = Gravity.BOTTOM or Gravity.END
         fp.bottomMargin = dp(18)
-        p0.addView(fb, fp)
+        body0.addView(fb, fp)
+        col0.addView(body0, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+        p0.addView(col0, FrameLayout.LayoutParams(-1, -1))
         lvFolders = lv
         adapterF = ad
         emptyF = em
@@ -1148,6 +1159,92 @@ class MainActivity : Activity() {
         }
     }
 
+    // Ringkasan total semua akun (tidak ikut pencarian): teks satu baris, legenda warna, dan bar tipis
+    private fun buildSummary(): LinearLayout {
+        val box = LinearLayout(this)
+        box.orientation = LinearLayout.VERTICAL
+        box.setPadding(dp(2), dp(4), dp(2), dp(2))
+        val row = LinearLayout(this)
+        row.orientation = LinearLayout.HORIZONTAL
+        row.gravity = Gravity.CENTER_VERTICAL
+        val t1 = TextView(this)
+        t1.textSize = 12f
+        t1.setTextColor(sub)
+        val t2 = TextView(this)
+        t2.textSize = 11f
+        t2.setTextColor(sub)
+        row.addView(t1, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        row.addView(t2, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        box.addView(row)
+        val bar = LinearLayout(this)
+        bar.orientation = LinearLayout.HORIZONTAL
+        val bp = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(4))
+        bp.topMargin = dp(7)
+        box.addView(bar, bp)
+        sumLine = t1
+        sumLegend = t2
+        sumBar = bar
+        return box
+    }
+
+    private fun updateSummary() {
+        val t1 = sumLine ?: return
+        val t2 = sumLegend ?: return
+        val bar = sumBar ?: return
+        var servers = 0
+        var siap = 0
+        var pakai = 0
+        for (f in folders) {
+            for (r in f.items) {
+                servers++
+                val k = Store.rank(r.note)
+                if (k == 2) siap++ else if (k == 3) pakai++
+            }
+        }
+        val belum = servers - siap - pakai
+        val a = SpannableStringBuilder()
+        fun num(n: Int) {
+            val st = a.length
+            a.append(n.toString())
+            a.setSpan(StyleSpan(Typeface.BOLD), st, a.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            a.setSpan(ForegroundColorSpan(fg), st, a.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        }
+        num(servers)
+        a.append(" server · ")
+        num(folders.size)
+        a.append(" akun")
+        t1.text = a
+        val l = SpannableStringBuilder()
+        fun dot(color: Int, n: Int) {
+            val st = l.length
+            l.append("●")
+            l.setSpan(ForegroundColorSpan(color), st, l.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            l.append(" " + n)
+        }
+        dot(cGreen, siap)
+        l.append("   ")
+        dot(cDone, pakai)
+        l.append("   ")
+        dot(0xFF5A5A5A.toInt(), belum)
+        t2.text = l
+        bar.removeAllViews()
+        fun seg(color: Int, n: Int) {
+            if (n <= 0) return
+            val v = View(this)
+            v.background = shape(color, 2)
+            val p = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, n.toFloat())
+            if (bar.childCount > 0) p.leftMargin = dp(2)
+            bar.addView(v, p)
+        }
+        if (servers == 0) {
+            seg(line, 1)
+        } else {
+            seg(cGreen, siap)
+            seg(cDone, pakai)
+            seg(0xFF4A4A4A.toInt(), belum)
+        }
+    }
+
     private fun refreshFolders() {
         shownF.clear()
         val q = fQuery.trim()
@@ -1159,6 +1256,7 @@ class MainActivity : Activity() {
             shownF.add(f)
         }
         adapterF?.notifyDataSetChanged()
+        updateSummary()
         emptyF?.text = if (folders.isEmpty()) "Belum ada akun.\nTekan + Akun, atau tunggu kiriman dari aplikasi pembuat akun." else "Tidak ada hasil."
     }
 
@@ -1679,6 +1777,7 @@ class MainActivity : Activity() {
             cell.gravity = Gravity.CENTER
             val lb = label(names3[i], 10f, sub, true)
             lb.letterSpacing = 0.1f
+            lb.gravity = Gravity.CENTER
             nums3[i].gravity = Gravity.CENTER
             cell.addView(nums3[i])
             cell.addView(lb)
