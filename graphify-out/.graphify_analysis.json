@@ -286,8 +286,8 @@
       "degree": 6
     },
     {
-      "id": "github_workflows_build_build_steps",
-      "label": "steps",
+      "id": "app_src_main_java_com_catatan_cabang_mainactivity_gesture",
+      "label": "Gesture",
       "degree": 5
     },
     {
@@ -306,29 +306,7 @@
       ],
       "confidence": "EXTRACTED",
       "relation": "inherits",
-      "note": "Bridges community 1 \u2192 community 0"
-    },
-    {
-      "source": "MainActivity",
-      "target": "View",
-      "source_files": [
-        "app/src/main/java/com/catatan/cabang/MainActivity.kt",
-        ""
-      ],
-      "confidence": "EXTRACTED",
-      "relation": "references",
-      "note": "Bridges community 3 \u2192 community 0"
-    },
-    {
-      "source": "Folder",
-      "target": "Rec",
-      "source_files": [
-        "app/src/main/java/com/catatan/cabang/MainActivity.kt",
-        "app/src/main/java/com/catatan/cabang/MainActivity.kt"
-      ],
-      "confidence": "EXTRACTED",
-      "relation": "references",
-      "note": "Bridges community 5 \u2192 community 2"
+      "note": "Bridges community 0 \u2192 community 1"
     },
     {
       "source": "MainActivity",
@@ -339,7 +317,29 @@
       ],
       "confidence": "EXTRACTED",
       "relation": "references",
-      "note": "Bridges community 2 \u2192 community 0"
+      "note": "Bridges community 0 \u2192 community 2"
+    },
+    {
+      "source": "MainActivity",
+      "target": "View",
+      "source_files": [
+        "app/src/main/java/com/catatan/cabang/MainActivity.kt",
+        ""
+      ],
+      "confidence": "EXTRACTED",
+      "relation": "references",
+      "note": "Bridges community 0 \u2192 community 3"
+    },
+    {
+      "source": "Folder",
+      "target": "Rec",
+      "source_files": [
+        "app/src/main/java/com/catatan/cabang/MainActivity.kt",
+        "app/src/main/java/com/catatan/cabang/MainActivity.kt"
+      ],
+      "confidence": "EXTRACTED",
+      "relation": "references",
+      "note": "Bridges community 2 \u2192 community 5"
     }
   ],
   "tokens": {
