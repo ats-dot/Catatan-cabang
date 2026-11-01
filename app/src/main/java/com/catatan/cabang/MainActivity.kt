@@ -1,5 +1,9 @@
 package com.catatan.cabang
 
+import android.animation.Animator
+import android.animation.AnimatorListenerAdapter
+import android.animation.ArgbEvaluator
+import android.animation.ValueAnimator
 import android.app.Activity
 import android.app.Dialog
 import android.content.ClipData
@@ -29,12 +33,15 @@ import android.view.Gravity
 import android.view.HapticFeedbackConstants
 import android.view.MotionEvent
 import android.view.View
+import android.view.VelocityTracker
 import android.view.ViewConfiguration
+import android.view.ViewTreeObserver
 import android.view.ViewGroup
 import android.view.Window
 import android.view.WindowManager
 import android.view.animation.DecelerateInterpolator
 import android.view.animation.OvershootInterpolator
+import android.view.animation.PathInterpolator
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
 import android.widget.BaseAdapter
@@ -124,45 +131,6 @@ class IconView(
     }
 }
 
-class SwipeFrame(ctx: Context, private val onSwipe: (Int) -> Unit) : FrameLayout(ctx) {
-    private var x0 = 0f
-    private var y0 = 0f
-    private var dx = 0f
-    private val slop = ViewConfiguration.get(ctx).scaledTouchSlop
-    private val dist = 70 * ctx.resources.displayMetrics.density
-
-    override fun onInterceptTouchEvent(e: MotionEvent): Boolean {
-        when (e.actionMasked) {
-            MotionEvent.ACTION_DOWN -> {
-                x0 = e.x
-                y0 = e.y
-                dx = 0f
-            }
-            MotionEvent.ACTION_MOVE -> {
-                val mx = e.x - x0
-                val my = e.y - y0
-                if (abs(mx) > slop * 2 && abs(mx) > abs(my) * 1.5f) {
-                    dx = mx
-                    return true
-                }
-            }
-        }
-        return false
-    }
-
-    override fun onTouchEvent(e: MotionEvent): Boolean {
-        when (e.actionMasked) {
-            MotionEvent.ACTION_MOVE -> dx = e.x - x0
-            MotionEvent.ACTION_UP -> {
-                if (abs(dx) > dist) onSwipe(if (dx < 0) 1 else -1)
-                dx = 0f
-            }
-            MotionEvent.ACTION_CANCEL -> dx = 0f
-        }
-        return true
-    }
-}
-
 class MainActivity : Activity() {
 
     companion object {
@@ -191,6 +159,24 @@ class MainActivity : Activity() {
     private val cGreen = 0xFF7FC8A0.toInt()
     private val cAmber = 0xFFD9B25F.toInt()
     private val cDone = 0xFF8A8A8A.toInt()
+
+    // navigasi ala iPhone
+    private var rootFrame: FrameLayout? = null
+    private var homeView: View? = null
+    private var scrim: View? = null
+    private var detailView: View? = null
+    private var navP = 0f
+    private var navAnim: ValueAnimator? = null
+    private var heightAnim: ValueAnimator? = null
+    private var pager: FrameLayout? = null
+    private val pages = ArrayList<View>()
+    private var pos = 0f
+    private var posAnim: ValueAnimator? = null
+    private var tabThumb: View? = null
+    private var tabThumbW = 0f
+    private val tabLabels = ArrayList<TextView>()
+    private var searchBtn: FrameLayout? = null
+    private val argb = ArgbEvaluator()
     private var query = ""               // teks yang sedang diketik
     private var applied = false          // sudah dikonfirmasi (tekan centang)?
     private var appliedQ = ""            // teks yang dipakai saat dikonfirmasi
@@ -278,9 +264,9 @@ class MainActivity : Activity() {
         } else if (current != null) {
             showFolders(-1)
         } else if (fOpen && topTab == 0) {
-            toggleFolderSearch()
-        } else if (topTab == 1) {
-            switchTab(0)
+            closeFolderSearch()
+        } else if (topTab == 1 || pos > 0.5f) {
+            goTo(0)
         } else {
             super.onBackPressed()
         }
@@ -335,9 +321,12 @@ class MainActivity : Activity() {
     private fun pressFx(v: View) {
         v.setOnTouchListener { x, e ->
             if (e.actionMasked == MotionEvent.ACTION_DOWN) {
-                x.animate().scaleX(0.94f).scaleY(0.94f).setDuration(80).start()
+                x.animate().cancel()
+                x.animate().scaleX(0.95f).scaleY(0.95f).setDuration(90)
+                    .setInterpolator(DecelerateInterpolator()).start()
             } else if (e.actionMasked == MotionEvent.ACTION_UP || e.actionMasked == MotionEvent.ACTION_CANCEL) {
-                x.animate().scaleX(1f).scaleY(1f).setDuration(160).start()
+                x.animate().scaleX(1f).scaleY(1f).setDuration(340)
+                    .setInterpolator(OvershootInterpolator(2.4f)).start()
             }
             false
         }
@@ -451,7 +440,8 @@ class MainActivity : Activity() {
 
     private fun rebuild() {
         val c = current
-        if (c == null) showFolders() else showData(c)
+        buildRoot()
+        if (c != null) showData(c, 0)
     }
 
     // ---------- gesture: tap / tahan 200ms / geser kiri ----------
@@ -555,74 +545,293 @@ class MainActivity : Activity() {
     // =====================================================
     // HALAMAN 1: DAFTAR FOLDER
     // =====================================================
-    private fun showFolders(dir: Int = 0) {
+    // =====================================================
+    // NAVIGASI ALA iPHONE
+    // =====================================================
+    private fun iosCurve() = PathInterpolator(0.32f, 0.72f, 0f, 1f)
+
+    private fun onAnimDone(a: Animator, block: () -> Unit) {
+        a.addListener(object : AnimatorListenerAdapter() {
+            private var cancelled = false
+            override fun onAnimationCancel(an: Animator) {
+                cancelled = true
+            }
+
+            override fun onAnimationEnd(an: Animator) {
+                if (!cancelled) block()
+            }
+        })
+    }
+
+    private fun rootW(): Float {
+        val w = rootFrame?.width ?: 0
+        return (if (w > 0) w else resources.displayMetrics.widthPixels).toFloat()
+    }
+
+    private fun layers(on: Boolean) {
+        val t = if (on) View.LAYER_TYPE_HARDWARE else View.LAYER_TYPE_NONE
+        homeView?.setLayerType(t, null)
+        detailView?.setLayerType(t, null)
+    }
+
+    // p = 0: daftar akun tampil. p = 1: isi folder tampil.
+    private fun applyNav(p: Float) {
+        navP = p
+        val w = rootW()
+        homeView?.translationX = -p * w * 0.28f
+        detailView?.translationX = (1f - p) * w
+        val sc = scrim
+        if (sc != null) {
+            sc.visibility = if (p > 0.001f) View.VISIBLE else View.GONE
+            sc.alpha = 0.35f * p
+        }
+    }
+
+    private fun animateNav(to: Float) {
+        navAnim?.cancel()
+        val from = navP
+        val a = ValueAnimator.ofFloat(from, to)
+        a.duration = (140 + 340 * abs(to - from)).toLong()
+        a.interpolator = iosCurve()
+        layers(true)
+        a.addUpdateListener { applyNav(it.animatedValue as Float) }
+        onAnimDone(a) { finishNav(to) }
+        navAnim = a
+        a.start()
+    }
+
+    private fun finishNav(to: Float) {
+        layers(false)
+        navP = to
+        if (to <= 0f) {
+            detailView?.let { rootFrame?.removeView(it) }
+            detailView = null
+            homeView?.visibility = View.VISIBLE
+            homeView?.translationX = 0f
+            scrim?.visibility = View.GONE
+        } else {
+            applyNav(1f)
+            homeView?.visibility = View.INVISIBLE
+        }
+    }
+
+    private fun pushDetail(col: View, animated: Boolean) {
+        val root = rootFrame ?: return
+        navAnim?.cancel()
+        detailView?.let { root.removeView(it) }
+        detailView = col
+        col.elevation = dp(12).toFloat()
+        root.addView(col, FrameLayout.LayoutParams(-1, -1))
+        homeView?.visibility = View.VISIBLE
+        if (animated) {
+            applyNav(0f)
+            col.viewTreeObserver.addOnPreDrawListener(object : ViewTreeObserver.OnPreDrawListener {
+                override fun onPreDraw(): Boolean {
+                    col.viewTreeObserver.removeOnPreDrawListener(this)
+                    animateNav(1f)
+                    return true
+                }
+            })
+        } else {
+            applyNav(1f)
+            finishNav(1f)
+        }
+    }
+
+    private fun leaveFolder(animated: Boolean) {
         current = null
         selected.clear()
         searchOpen = false
         query = ""
         applied = false
         appliedQ = ""
+        val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+        imm.hideSoftInputFromWindow(window.decorView.windowToken, 0)
+        refreshFolders()
+        if (animated) animateNav(0f) else finishNav(0f)
+    }
+
+    // tarik dari tepi kiri untuk kembali (seperti iPhone)
+    private inner class NavRoot(ctx: Context) : FrameLayout(ctx) {
+        private val slop = ViewConfiguration.get(ctx).scaledTouchSlop
+        private var x0 = 0f
+        private var y0 = 0f
+        private var track = false
+        private var drag = false
+        private var vt: VelocityTracker? = null
+
+        override fun onInterceptTouchEvent(e: MotionEvent): Boolean {
+            if (detailView == null) return false
+            when (e.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    x0 = e.x
+                    y0 = e.y
+                    drag = false
+                    track = e.x < dp(48)
+                    vt?.recycle()
+                    vt = if (track) VelocityTracker.obtain() else null
+                    vt?.addMovement(e)
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    if (track && !drag) {
+                        vt?.addMovement(e)
+                        val dx = e.x - x0
+                        val dy = e.y - y0
+                        if (dx > slop * 2 && dx > abs(dy) * 1.3f) {
+                            drag = true
+                            navAnim?.cancel()
+                            homeView?.visibility = View.VISIBLE
+                            layers(true)
+                            x0 = e.x
+                            parent?.requestDisallowInterceptTouchEvent(true)
+                            val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+                            imm.hideSoftInputFromWindow(window.decorView.windowToken, 0)
+                        }
+                    }
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    if (!drag) {
+                        vt?.recycle()
+                        vt = null
+                        track = false
+                    }
+                }
+            }
+            return drag
+        }
+
+        override fun onTouchEvent(e: MotionEvent): Boolean {
+            if (!drag) return false
+            vt?.addMovement(e)
+            when (e.actionMasked) {
+                MotionEvent.ACTION_MOVE -> {
+                    if (width > 0) applyNav(1f - ((e.x - x0) / width).coerceIn(0f, 1f))
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    vt?.computeCurrentVelocity(1000)
+                    val v = vt?.xVelocity ?: 0f
+                    val close = e.actionMasked == MotionEvent.ACTION_UP && (v > 900f || (v > -900f && navP < 0.5f))
+                    drag = false
+                    track = false
+                    vt?.recycle()
+                    vt = null
+                    if (close) leaveFolder(true) else animateNav(1f)
+                }
+            }
+            return true
+        }
+    }
+
+    // =====================================================
+    // HALAMAN 1: AKUN dan BUKTI KIRIM (pager)
+    // =====================================================
+    private fun showFolders(dir: Int = 0) {
+        if (dir < 0 && detailView != null) {
+            leaveFolder(true)
+            return
+        }
+        current = null
+        selected.clear()
+        searchOpen = false
+        query = ""
+        applied = false
+        appliedQ = ""
+        buildRoot()
+    }
+
+    private fun buildRoot() {
         applyWindow()
-        val col = column()
+        posAnim?.cancel()
+        navAnim?.cancel()
+        heightAnim?.cancel()
+        pages.clear()
+        val root = NavRoot(this)
+        root.setBackgroundColor(bg)
+
+        val home = LinearLayout(this)
+        home.orientation = LinearLayout.VERTICAL
+        home.setBackgroundColor(bg)
+        home.setPadding(dp(16), dp(12), dp(16), 0)
 
         val top = LinearLayout(this)
         top.orientation = LinearLayout.HORIZONTAL
         top.gravity = Gravity.CENTER_VERTICAL
         top.addView(label("Catatan Cabang", 22f, fg, true), LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        if (topTab == 0) top.addView(iconBtn(1, fOpen) { toggleFolderSearch() }, iconLp())
+        val sb = iconBtn(1, fOpen) { toggleFolderSearch() }
+        searchBtn = sb
+        top.addView(sb, iconLp())
         top.addView(iconBtn(2, false) { menuFolders() }, iconLp())
-        col.addView(top, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(44)))
+        home.addView(top, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(44)))
 
-        col.addView(tabBar(), lp(10))
+        home.addView(tabBar(), lp(10))
 
         val fs = LinearLayout(this)
         fs.orientation = LinearLayout.VERTICAL
-        col.addView(fs, lp(8))
+        home.addView(fs, lp(8))
         fSearchHolder = fs
 
-        val frame = SwipeFrame(this) { d ->
-            if (d > 0 && topTab == 0) switchTab(1)
-            else if (d < 0 && topTab == 1) switchTab(0)
-        }
-        if (topTab == 0) {
-            val lv = ListView(this)
-            styleList(lv)
-            val ad = FolderAdapter()
-            lv.adapter = ad
-            frame.addView(lv, FrameLayout.LayoutParams(-1, -1))
-            val em = label("", 14f, sub, false)
-            em.gravity = Gravity.CENTER
-            frame.addView(em, FrameLayout.LayoutParams(-1, -1))
-            lv.emptyView = em
+        val pg = HomePager(this)
+        val p0 = FrameLayout(this)
+        val lv = ListView(this)
+        styleList(lv)
+        val ad = FolderAdapter()
+        lv.adapter = ad
+        p0.addView(lv, FrameLayout.LayoutParams(-1, -1))
+        val em = label("", 14f, sub, false)
+        em.gravity = Gravity.CENTER
+        p0.addView(em, FrameLayout.LayoutParams(-1, -1))
+        lv.emptyView = em
+        val fb = fab("+  Akun") { askAccount() }
+        val fp = FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+        fp.gravity = Gravity.BOTTOM or Gravity.END
+        fp.bottomMargin = dp(18)
+        p0.addView(fb, fp)
+        lvFolders = lv
+        adapterF = ad
+        emptyF = em
 
-            val fb = fab("+  Akun") { askAccount() }
-            val fp = FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
-            fp.gravity = Gravity.BOTTOM or Gravity.END
-            fp.bottomMargin = dp(18)
-            frame.addView(fb, fp)
-            lvFolders = lv
-            adapterF = ad
-            emptyF = em
-        } else {
-            val em = label("Belum ada bukti kirim.\nFolder muncul otomatis setelah satu pesanan selesai.", 14f, sub, false)
-            em.gravity = Gravity.CENTER
-            frame.addView(em, FrameLayout.LayoutParams(-1, -1))
-            lvFolders = null
-            adapterF = null
-            emptyF = null
-        }
-        col.addView(frame, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
-        setContentView(col)
-        if (dir != 0) enter(col, dir)
+        val p1 = FrameLayout(this)
+        val em1 = label("Belum ada bukti kirim.\nFolder muncul otomatis setelah satu pesanan selesai.", 14f, sub, false)
+        em1.gravity = Gravity.CENTER
+        p1.addView(em1, FrameLayout.LayoutParams(-1, -1))
+
+        pg.addView(p0, FrameLayout.LayoutParams(-1, -1))
+        pg.addView(p1, FrameLayout.LayoutParams(-1, -1))
+        pages.add(p0)
+        pages.add(p1)
+        pager = pg
+        home.addView(pg, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+
+        root.addView(home, FrameLayout.LayoutParams(-1, -1))
+        val sc = View(this)
+        sc.setBackgroundColor(Color.BLACK)
+        sc.visibility = View.GONE
+        root.addView(sc, FrameLayout.LayoutParams(-1, -1))
+
+        rootFrame = root
+        homeView = home
+        scrim = sc
+        detailView = null
+        navP = 0f
+        setContentView(root)
+        pos = topTab.toFloat()
+        applyPos(pos)
+        styleSearchBtn()
         buildFolderSearch(false)
         refreshFolders()
     }
 
-    private fun tabBar(): LinearLayout {
-        val r = LinearLayout(this)
-        r.orientation = LinearLayout.HORIZONTAL
-        r.background = shape(surface, 22, line)
-        r.setPadding(dp(3), dp(3), dp(3), dp(3))
+    private fun tabBar(): FrameLayout {
+        val tb = FrameLayout(this)
+        tb.background = shape(surface, 22, line)
+        tb.setPadding(dp(3), dp(3), dp(3), dp(3))
+        val th = View(this)
+        th.background = shape(fg, 20)
+        tb.addView(th, FrameLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT))
+        tabThumb = th
+        val row = LinearLayout(this)
+        row.orientation = LinearLayout.HORIZONTAL
+        tabLabels.clear()
         val names = arrayOf("Akun", "Bukti kirim")
         for (i in 0..1) {
             val t = TextView(this)
@@ -630,44 +839,236 @@ class MainActivity : Activity() {
             t.textSize = 14f
             t.gravity = Gravity.CENTER
             t.typeface = Typeface.DEFAULT_BOLD
+            t.setTextColor(sub)
             t.setPadding(0, dp(9), 0, dp(9))
-            if (i == topTab) {
-                t.setTextColor(bg)
-                t.background = shape(fg, 20)
-            } else {
-                t.setTextColor(sub)
-            }
-            t.setOnClickListener { if (i != topTab) switchTab(i) }
-            r.addView(t, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            t.setOnClickListener { goTo(i) }
+            tabLabels.add(t)
+            row.addView(t, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         }
-        return r
+        tb.addView(row, FrameLayout.LayoutParams(-1, -2))
+        tb.addOnLayoutChangeListener { _, l, _, r, _, _, _, _, _ ->
+            val iw = (r - l - dp(6)) / 2
+            val lpp = th.layoutParams
+            if (lpp.width != iw) {
+                lpp.width = iw
+                th.layoutParams = lpp
+            }
+            tabThumbW = iw.toFloat()
+            th.translationX = pos * iw
+        }
+        return tb
     }
 
-    private fun switchTab(n: Int) {
-        val d = if (n > topTab) 1 else -1
-        topTab = n
-        showFolders(d)
+    // pos: 0 sampai 1 (pecahan saat digeser). Halaman, penanda tab, dan teks tab mengikuti angka ini.
+    private fun applyPos(p: Float) {
+        pos = p
+        val w = (pager?.width ?: 0).toFloat()
+        for (i in pages.indices) {
+            val d = i - p
+            val v = pages[i]
+            v.visibility = if (abs(d) >= 1f) View.INVISIBLE else View.VISIBLE
+            v.translationX = d * w
+        }
+        tabThumb?.translationX = p * tabThumbW
+        for (i in tabLabels.indices) {
+            val k = (1f - abs(i - p)).coerceIn(0f, 1f)
+            tabLabels[i].setTextColor(argb.evaluate(k, sub, bg) as Int)
+        }
+        searchBtn?.alpha = (1f - p).coerceIn(0f, 1f)
+        searchBtn?.isClickable = p < 0.5f
+        topTab = Math.round(p).coerceIn(0, 1)
+        if (p > 0.15f && fOpen) closeFolderSearch()
+    }
+
+    private fun pagerLayers(on: Boolean) {
+        val t = if (on) View.LAYER_TYPE_HARDWARE else View.LAYER_TYPE_NONE
+        for (v in pages) v.setLayerType(t, null)
+    }
+
+    private fun goTo(i: Int) {
+        posAnim?.cancel()
+        val a = ValueAnimator.ofFloat(pos, i.toFloat())
+        a.duration = (240 + 240 * abs(i - pos)).toLong()
+        a.interpolator = iosCurve()
+        pagerLayers(true)
+        a.addUpdateListener { applyPos(it.animatedValue as Float) }
+        onAnimDone(a) {
+            applyPos(i.toFloat())
+            pagerLayers(false)
+        }
+        posAnim = a
+        a.start()
+    }
+
+    private inner class HomePager(ctx: Context) : FrameLayout(ctx) {
+        private val slop = ViewConfiguration.get(ctx).scaledTouchSlop
+        private var x0 = 0f
+        private var y0 = 0f
+        private var drag = false
+        private var startPos = 0f
+        private var vt: VelocityTracker? = null
+
+        override fun onSizeChanged(w: Int, h: Int, ow: Int, oh: Int) {
+            super.onSizeChanged(w, h, ow, oh)
+            applyPos(pos)
+        }
+
+        override fun onInterceptTouchEvent(e: MotionEvent): Boolean {
+            when (e.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    x0 = e.x
+                    y0 = e.y
+                    drag = false
+                    vt?.recycle()
+                    vt = VelocityTracker.obtain()
+                    vt?.addMovement(e)
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    vt?.addMovement(e)
+                    val dx = e.x - x0
+                    val dy = e.y - y0
+                    if (!drag && abs(dx) > slop * 2 && abs(dx) > abs(dy) * 1.3f) {
+                        drag = true
+                        startPos = pos
+                        posAnim?.cancel()
+                        pagerLayers(true)
+                        parent?.requestDisallowInterceptTouchEvent(true)
+                        x0 = e.x
+                    }
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    if (!drag) {
+                        vt?.recycle()
+                        vt = null
+                    }
+                }
+            }
+            return drag
+        }
+
+        override fun onTouchEvent(e: MotionEvent): Boolean {
+            vt?.addMovement(e)
+            when (e.actionMasked) {
+                MotionEvent.ACTION_MOVE -> {
+                    if (drag && width > 0) {
+                        var p = startPos - (e.x - x0) / width
+                        if (p < 0f) p *= 0.35f
+                        if (p > 1f) p = 1f + (p - 1f) * 0.35f
+                        applyPos(p)
+                    }
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    if (drag) {
+                        vt?.computeCurrentVelocity(1000)
+                        val v = vt?.xVelocity ?: 0f
+                        val start = Math.round(startPos)
+                        val moved = pos - start
+                        var target = start
+                        if (v < -700f || moved > 0.22f) target = start + 1
+                        else if (v > 700f || moved < -0.22f) target = start - 1
+                        goTo(target.coerceIn(0, 1))
+                    }
+                    drag = false
+                    vt?.recycle()
+                    vt = null
+                }
+            }
+            return true
+        }
+    }
+
+    // ---------- pencarian di halaman akun ----------
+    private fun styleSearchBtn() {
+        val f = searchBtn ?: return
+        f.background = shape(if (fOpen) fg else Color.TRANSPARENT, 20, line)
+        f.removeAllViews()
+        f.addView(IconView(this, 1, if (fOpen) bg else fg, bg), FrameLayout.LayoutParams(dp(20), dp(20), Gravity.CENTER))
     }
 
     private fun toggleFolderSearch() {
-        fOpen = !fOpen
+        if (topTab != 0) return
+        if (fOpen) closeFolderSearch() else openFolderSearch()
+    }
+
+    private fun openFolderSearch() {
+        fOpen = true
+        styleSearchBtn()
+        buildFolderSearch(true)
+    }
+
+    private fun closeFolderSearch() {
+        if (!fOpen) return
+        fOpen = false
+        fQuery = ""
         val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
-        if (!fOpen) {
-            fQuery = ""
-            imm.hideSoftInputFromWindow(window.decorView.windowToken, 0)
+        imm.hideSoftInputFromWindow(window.decorView.windowToken, 0)
+        styleSearchBtn()
+        fSearchHolder?.let { collapseHolder(it) }
+        refreshFolders()
+    }
+
+    private fun expandHolder(v: View) {
+        heightAnim?.cancel()
+        v.visibility = View.VISIBLE
+        val ws = View.MeasureSpec.makeMeasureSpec(resources.displayMetrics.widthPixels - dp(32), View.MeasureSpec.EXACTLY)
+        v.measure(ws, View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED))
+        val target = v.measuredHeight
+        v.alpha = 0f
+        val a = ValueAnimator.ofInt(0, target)
+        a.duration = 300
+        a.interpolator = iosCurve()
+        a.addUpdateListener {
+            val lpp = v.layoutParams
+            lpp.height = it.animatedValue as Int
+            v.layoutParams = lpp
+            v.alpha = it.animatedFraction
         }
-        showFolders(0)
-        if (fOpen) buildFolderSearch(true)
+        onAnimDone(a) {
+            val lpp = v.layoutParams
+            lpp.height = ViewGroup.LayoutParams.WRAP_CONTENT
+            v.layoutParams = lpp
+            v.alpha = 1f
+        }
+        heightAnim = a
+        a.start()
+    }
+
+    private fun collapseHolder(v: View) {
+        heightAnim?.cancel()
+        val from = v.height
+        if (from <= 0) {
+            v.visibility = View.GONE
+            v.removeAllViews()
+            return
+        }
+        val a = ValueAnimator.ofInt(from, 0)
+        a.duration = 240
+        a.interpolator = iosCurve()
+        a.addUpdateListener {
+            val lpp = v.layoutParams
+            lpp.height = it.animatedValue as Int
+            v.layoutParams = lpp
+            v.alpha = 1f - it.animatedFraction
+        }
+        onAnimDone(a) {
+            v.visibility = View.GONE
+            v.removeAllViews()
+            val lpp = v.layoutParams
+            lpp.height = ViewGroup.LayoutParams.WRAP_CONTENT
+            v.layoutParams = lpp
+            v.alpha = 1f
+        }
+        heightAnim = a
+        a.start()
     }
 
     private fun buildFolderSearch(focus: Boolean) {
         val sh = fSearchHolder ?: return
         sh.removeAllViews()
-        if (!fOpen || topTab != 0) {
+        if (!fOpen) {
             sh.visibility = View.GONE
             return
         }
-        sh.visibility = View.VISIBLE
         val et = input(if (fField == 0) "Cari email" else "Cari ID", fQuery,
             if (fField == 1) InputType.TYPE_CLASS_NUMBER else InputType.TYPE_CLASS_TEXT)
         et.isSingleLine = true
@@ -699,12 +1100,13 @@ class MainActivity : Activity() {
             chips.addView(c, cp)
         }
         sh.addView(chips, lp(10))
+        expandHolder(sh)
         if (focus) {
             et.requestFocus()
             et.postDelayed({
                 val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
                 imm.showSoftInput(et, 0)
-            }, 150)
+            }, 120)
         }
     }
 
@@ -1056,8 +1458,7 @@ class MainActivity : Activity() {
         emptyD = em
         fabData = fb
         actBar = ab
-        setContentView(col)
-        if (dir != 0) enter(col, dir)
+        pushDetail(col, dir != 0)
         buildTop()
         buildSearch()
         refreshData()
@@ -1408,10 +1809,10 @@ class MainActivity : Activity() {
         }
         d.show()
         content.alpha = 0f
-        content.scaleX = 0.92f
-        content.scaleY = 0.92f
-        content.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(200)
-            .setInterpolator(DecelerateInterpolator()).start()
+        content.scaleX = 0.9f
+        content.scaleY = 0.9f
+        content.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(300)
+            .setInterpolator(iosCurve()).start()
         return d
     }
 
