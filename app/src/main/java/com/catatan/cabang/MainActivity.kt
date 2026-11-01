@@ -20,6 +20,9 @@ import android.os.Handler
 import android.os.Looper
 import android.text.Editable
 import android.text.InputType
+import android.text.SpannableStringBuilder
+import android.text.Spanned
+import android.text.style.ForegroundColorSpan
 import android.text.TextUtils
 import android.text.TextWatcher
 import android.view.Gravity
@@ -121,6 +124,45 @@ class IconView(
     }
 }
 
+class SwipeFrame(ctx: Context, private val onSwipe: (Int) -> Unit) : FrameLayout(ctx) {
+    private var x0 = 0f
+    private var y0 = 0f
+    private var dx = 0f
+    private val slop = ViewConfiguration.get(ctx).scaledTouchSlop
+    private val dist = 70 * ctx.resources.displayMetrics.density
+
+    override fun onInterceptTouchEvent(e: MotionEvent): Boolean {
+        when (e.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                x0 = e.x
+                y0 = e.y
+                dx = 0f
+            }
+            MotionEvent.ACTION_MOVE -> {
+                val mx = e.x - x0
+                val my = e.y - y0
+                if (abs(mx) > slop * 2 && abs(mx) > abs(my) * 1.5f) {
+                    dx = mx
+                    return true
+                }
+            }
+        }
+        return false
+    }
+
+    override fun onTouchEvent(e: MotionEvent): Boolean {
+        when (e.actionMasked) {
+            MotionEvent.ACTION_MOVE -> dx = e.x - x0
+            MotionEvent.ACTION_UP -> {
+                if (abs(dx) > dist) onSwipe(if (dx < 0) 1 else -1)
+                dx = 0f
+            }
+            MotionEvent.ACTION_CANCEL -> dx = 0f
+        }
+        return true
+    }
+}
+
 class MainActivity : Activity() {
 
     companion object {
@@ -138,12 +180,22 @@ class MainActivity : Activity() {
 
     private var dark = true
     private var searchOpen = false
-    private var searchField = 0          // 0 email, 1 server, 2 level, 3 keterangan
+    private var searchField = 0          // 0 server, 1 level, 2 keterangan
+    private var statFilter = 0           // 0 semua, 1 siap kirim, 2 terpakai
+    private var topTab = 0               // 0 Akun, 1 Bukti kirim
+    private var fOpen = false
+    private var fField = 0               // 0 email, 1 ID
+    private var fQuery = ""
+    private val shownF = ArrayList<Folder>()
+    private var fSearchHolder: LinearLayout? = null
+    private val cGreen = 0xFF7FC8A0.toInt()
+    private val cAmber = 0xFFD9B25F.toInt()
+    private val cDone = 0xFF8A8A8A.toInt()
     private var query = ""               // teks yang sedang diketik
     private var applied = false          // sudah dikonfirmasi (tekan centang)?
     private var appliedQ = ""            // teks yang dipakai saat dikonfirmasi
     private var pendingAll = false
-    private val fieldNames = arrayOf("Email", "Server", "Level", "Keterangan")
+    private val fieldNames = arrayOf("Server", "Level", "Keterangan")
 
     // halaman folder
     private var lvFolders: ListView? = null
@@ -159,6 +211,7 @@ class MainActivity : Activity() {
     private var searchEt: EditText? = null
     private var statAkun: TextView? = null
     private var statServer: TextView? = null
+    private var statPakai: TextView? = null
     private var lblAkun: TextView? = null
     private var lblServer: TextView? = null
     private var fabData: View? = null
@@ -166,13 +219,13 @@ class MainActivity : Activity() {
     private var barOn = false
 
     // ---------- tema hitam putih ----------
-    private val bg get() = if (dark) 0xFF000000.toInt() else 0xFFFFFFFF.toInt()
-    private val fg get() = if (dark) 0xFFFFFFFF.toInt() else 0xFF000000.toInt()
-    private val surface get() = if (dark) 0xFF0F0F0F.toInt() else 0xFFF5F5F5.toInt()
-    private val surface2 get() = if (dark) 0xFF1A1A1A.toInt() else 0xFFE8E8E8.toInt()
-    private val selSurface get() = if (dark) 0xFF1C1C1C.toInt() else 0xFFEAEAEA.toInt()
-    private val line get() = if (dark) 0xFF2A2A2A.toInt() else 0xFFE0E0E0.toInt()
-    private val sub get() = if (dark) 0xFF8C8C8C.toInt() else 0xFF6E6E6E.toInt()
+    private val bg get() = if (dark) 0xFF1F1F1F.toInt() else 0xFFEFEFEF.toInt()
+    private val fg get() = if (dark) 0xFFEDEDED.toInt() else 0xFF1F1F1F.toInt()
+    private val surface get() = if (dark) 0xFF2A2A2A.toInt() else 0xFFF8F8F8.toInt()
+    private val surface2 get() = if (dark) 0xFF333333.toInt() else 0xFFE4E4E4.toInt()
+    private val selSurface get() = if (dark) 0xFF363636.toInt() else 0xFFE0E0E0.toInt()
+    private val line get() = if (dark) 0xFF3D3D3D.toInt() else 0xFFD6D6D6.toInt()
+    private val sub get() = if (dark) 0xFFA3A3A3.toInt() else 0xFF6B6B6B.toInt()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -224,6 +277,10 @@ class MainActivity : Activity() {
             toggleSearch()
         } else if (current != null) {
             showFolders(-1)
+        } else if (fOpen && topTab == 0) {
+            toggleFolderSearch()
+        } else if (topTab == 1) {
+            switchTab(0)
         } else {
             super.onBackPressed()
         }
@@ -512,49 +569,169 @@ class MainActivity : Activity() {
         top.orientation = LinearLayout.HORIZONTAL
         top.gravity = Gravity.CENTER_VERTICAL
         top.addView(label("Catatan Cabang", 22f, fg, true), LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        if (topTab == 0) top.addView(iconBtn(1, fOpen) { toggleFolderSearch() }, iconLp())
         top.addView(iconBtn(2, false) { menuFolders() }, iconLp())
         col.addView(top, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(44)))
 
-        val frame = FrameLayout(this)
-        val lv = ListView(this)
-        styleList(lv)
-        val ad = FolderAdapter()
-        lv.adapter = ad
-        frame.addView(lv, FrameLayout.LayoutParams(-1, -1))
-        val em = label("", 14f, sub, false)
-        em.gravity = Gravity.CENTER
-        frame.addView(em, FrameLayout.LayoutParams(-1, -1))
-        lv.emptyView = em
+        col.addView(tabBar(), lp(10))
 
-        val fb = fab("+  Folder") {
-            askText("Folder baru", "", "Buat") { name ->
-                folders.add(Folder(name))
-                save()
-                refreshFolders()
-            }
+        val fs = LinearLayout(this)
+        fs.orientation = LinearLayout.VERTICAL
+        col.addView(fs, lp(8))
+        fSearchHolder = fs
+
+        val frame = SwipeFrame(this) { d ->
+            if (d > 0 && topTab == 0) switchTab(1)
+            else if (d < 0 && topTab == 1) switchTab(0)
         }
-        val fp = FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
-        fp.gravity = Gravity.BOTTOM or Gravity.END
-        fp.bottomMargin = dp(18)
-        frame.addView(fb, fp)
+        if (topTab == 0) {
+            val lv = ListView(this)
+            styleList(lv)
+            val ad = FolderAdapter()
+            lv.adapter = ad
+            frame.addView(lv, FrameLayout.LayoutParams(-1, -1))
+            val em = label("", 14f, sub, false)
+            em.gravity = Gravity.CENTER
+            frame.addView(em, FrameLayout.LayoutParams(-1, -1))
+            lv.emptyView = em
 
+            val fb = fab("+  Akun") { askAccount() }
+            val fp = FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+            fp.gravity = Gravity.BOTTOM or Gravity.END
+            fp.bottomMargin = dp(18)
+            frame.addView(fb, fp)
+            lvFolders = lv
+            adapterF = ad
+            emptyF = em
+        } else {
+            val em = label("Belum ada bukti kirim.\nFolder muncul otomatis setelah satu pesanan selesai.", 14f, sub, false)
+            em.gravity = Gravity.CENTER
+            frame.addView(em, FrameLayout.LayoutParams(-1, -1))
+            lvFolders = null
+            adapterF = null
+            emptyF = null
+        }
         col.addView(frame, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
-        lvFolders = lv
-        adapterF = ad
-        emptyF = em
         setContentView(col)
         if (dir != 0) enter(col, dir)
+        buildFolderSearch(false)
         refreshFolders()
     }
 
+    private fun tabBar(): LinearLayout {
+        val r = LinearLayout(this)
+        r.orientation = LinearLayout.HORIZONTAL
+        r.background = shape(surface, 22, line)
+        r.setPadding(dp(3), dp(3), dp(3), dp(3))
+        val names = arrayOf("Akun", "Bukti kirim")
+        for (i in 0..1) {
+            val t = TextView(this)
+            t.text = names[i]
+            t.textSize = 14f
+            t.gravity = Gravity.CENTER
+            t.typeface = Typeface.DEFAULT_BOLD
+            t.setPadding(0, dp(9), 0, dp(9))
+            if (i == topTab) {
+                t.setTextColor(bg)
+                t.background = shape(fg, 20)
+            } else {
+                t.setTextColor(sub)
+            }
+            t.setOnClickListener { if (i != topTab) switchTab(i) }
+            r.addView(t, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        }
+        return r
+    }
+
+    private fun switchTab(n: Int) {
+        val d = if (n > topTab) 1 else -1
+        topTab = n
+        showFolders(d)
+    }
+
+    private fun toggleFolderSearch() {
+        fOpen = !fOpen
+        val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+        if (!fOpen) {
+            fQuery = ""
+            imm.hideSoftInputFromWindow(window.decorView.windowToken, 0)
+        }
+        showFolders(0)
+        if (fOpen) buildFolderSearch(true)
+    }
+
+    private fun buildFolderSearch(focus: Boolean) {
+        val sh = fSearchHolder ?: return
+        sh.removeAllViews()
+        if (!fOpen || topTab != 0) {
+            sh.visibility = View.GONE
+            return
+        }
+        sh.visibility = View.VISIBLE
+        val et = input(if (fField == 0) "Cari email" else "Cari ID", fQuery,
+            if (fField == 1) InputType.TYPE_CLASS_NUMBER else InputType.TYPE_CLASS_TEXT)
+        et.isSingleLine = true
+        et.background = shape(surface, 14, fg)
+        et.addTextChangedListener(watcher {
+            fQuery = it
+            refreshFolders()
+        })
+        sh.addView(et)
+        val chips = LinearLayout(this)
+        chips.orientation = LinearLayout.HORIZONTAL
+        val list = ArrayList<TextView>()
+        val names = arrayOf("Email", "ID")
+        for (i in 0..1) {
+            val c = pill(names[i], i == fField) {}
+            c.setPadding(dp(14), dp(8), dp(14), dp(8))
+            c.setOnClickListener {
+                fField = i
+                for (j in list.indices) restyle(list[j], j == i)
+                et.inputType = if (i == 1) InputType.TYPE_CLASS_NUMBER else InputType.TYPE_CLASS_TEXT
+                et.hint = if (i == 0) "Cari email" else "Cari ID"
+                et.setText("")
+                fQuery = ""
+                refreshFolders()
+            }
+            list.add(c)
+            val cp = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+            cp.rightMargin = dp(8)
+            chips.addView(c, cp)
+        }
+        sh.addView(chips, lp(10))
+        if (focus) {
+            et.requestFocus()
+            et.postDelayed({
+                val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+                imm.showSoftInput(et, 0)
+            }, 150)
+        }
+    }
+
     private fun refreshFolders() {
+        shownF.clear()
+        val q = fQuery.trim()
+        for (f in folders) {
+            if (fOpen && q.isNotEmpty()) {
+                val v = if (fField == 0) f.name else f.id
+                if (!v.contains(q, true)) continue
+            }
+            shownF.add(f)
+        }
         adapterF?.notifyDataSetChanged()
-        emptyF?.text = "Belum ada folder.\nTekan + Folder untuk mulai."
+        emptyF?.text = if (folders.isEmpty()) "Belum ada akun.\nTekan + Akun, atau tunggu kiriman dari aplikasi pembuat akun." else "Tidak ada hasil."
+    }
+
+    private fun copyText(what: String, text: String) {
+        if (text.isBlank()) return
+        val cm = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        cm.setPrimaryClip(ClipData.newPlainText("Catatan Cabang", text))
+        toast("$what disalin")
     }
 
     private inner class FolderAdapter : BaseAdapter() {
-        override fun getCount() = folders.size
-        override fun getItem(position: Int): Any = folders[position]
+        override fun getCount() = shownF.size
+        override fun getItem(position: Int): Any = shownF[position]
         override fun getItemId(position: Int) = position.toLong()
         override fun getView(position: Int, convertView: View?, parent: ViewGroup?): View {
             val h: FolderHolder
@@ -567,7 +744,7 @@ class MainActivity : Activity() {
                 v = convertView
                 h = convertView.tag as FolderHolder
             }
-            h.bind(position, folders[position])
+            h.bind(position, shownF[position])
             return v
         }
     }
@@ -576,6 +753,7 @@ class MainActivity : Activity() {
         val ctx: Context = this@MainActivity
         val root = FrameLayout(ctx)
         private val tvName = TextView(ctx)
+        private val tvId = TextView(ctx)
         private val tvSub = TextView(ctx)
         private var pos = 0
 
@@ -583,28 +761,24 @@ class MainActivity : Activity() {
             val card = LinearLayout(ctx)
             card.orientation = LinearLayout.HORIZONTAL
             card.gravity = Gravity.CENTER_VERTICAL
-            card.background = shape(surface, 20, line)
-            card.setPadding(dp(14), dp(14), dp(14), dp(14))
-
-            val tile = FrameLayout(ctx)
-            tile.background = shape(surface2, 16, line)
-            tile.addView(IconView(ctx, 4, fg, bg), FrameLayout.LayoutParams(dp(28), dp(28), Gravity.CENTER))
-            card.addView(tile, LinearLayout.LayoutParams(dp(52), dp(52)))
+            card.background = shape(surface, 18, line)
+            card.setPadding(dp(16), dp(14), dp(14), dp(14))
 
             val mid = LinearLayout(ctx)
             mid.orientation = LinearLayout.VERTICAL
-            tvName.textSize = 17f
+            tvName.textSize = 16f
             tvName.setTextColor(fg)
             tvName.typeface = Typeface.DEFAULT_BOLD
             tvName.isSingleLine = true
             tvName.ellipsize = TextUtils.TruncateAt.END
+            tvId.textSize = 12f
+            tvId.setTextColor(sub)
             tvSub.textSize = 12f
             tvSub.setTextColor(sub)
             mid.addView(tvName)
+            mid.addView(tvId, lp(2))
             mid.addView(tvSub, lp(2))
-            val mp = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
-            mp.leftMargin = dp(14)
-            card.addView(mid, mp)
+            card.addView(mid, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
 
             card.addView(IconView(ctx, 5, sub, bg), LinearLayout.LayoutParams(dp(20), dp(20)))
 
@@ -612,18 +786,38 @@ class MainActivity : Activity() {
             root.addView(card, FrameLayout.LayoutParams(-1, -2))
 
             Gesture(root,
-                { folders.getOrNull(pos)?.let { openFolder(it) } },
-                { folders.getOrNull(pos)?.let { folderOptions(it) } },
+                { shownF.getOrNull(pos)?.let { openFolder(it) } },
+                { shownF.getOrNull(pos)?.let { folderOptions(it) } },
                 null).attach()
         }
 
         fun bind(p: Int, f: Folder) {
             pos = p
-            tvName.text = if (f.name.isBlank()) "(email belum diisi)" else f.name
+            if (f.name.isBlank()) {
+                tvName.text = "Email belum diisi"
+                tvName.setTextColor(cAmber)
+            } else {
+                tvName.text = f.name
+                tvName.setTextColor(fg)
+            }
+            tvId.text = if (f.id.isBlank()) "ID belum ada" else "ID ${f.id}"
             val siap = f.items.count { Store.rank(it.note) == 2 }
             val pakai = f.items.count { Store.rank(it.note) == 3 }
-            val idTxt = if (f.id.isBlank()) "ID belum ada" else "ID ${f.id}"
-            tvSub.text = "$idTxt\n${f.items.size} server · $siap siap · $pakai terpakai"
+            val sb = SpannableStringBuilder()
+            sb.append("${f.items.size} server")
+            if (siap > 0) {
+                sb.append(" · ")
+                val s = sb.length
+                sb.append("$siap siap")
+                sb.setSpan(ForegroundColorSpan(cGreen), s, sb.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            } else {
+                sb.append(" · 0 siap")
+            }
+            sb.append(" · ")
+            val s2 = sb.length
+            sb.append("$pakai terpakai")
+            if (pakai > 0) sb.setSpan(ForegroundColorSpan(cDone), s2, sb.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            tvSub.text = sb
         }
     }
 
@@ -633,16 +827,17 @@ class MainActivity : Activity() {
         applied = false
         appliedQ = ""
         searchField = 0
+        statFilter = 0
         showData(f, 1)
     }
 
     private fun folderOptions(f: Folder) {
         val b = box()
-        b.addView(label(f.name, 18f, fg, true))
+        b.addView(label(if (f.name.isBlank()) "ID ${f.id}" else f.name, 18f, fg, true))
         var d: Dialog? = null
-        b.addView(pill("Ganti judul", false) {
+        b.addView(pill("Ubah email", false) {
             d?.dismiss()
-            askText("Ganti judul", f.name, "Simpan") { name ->
+            askText("Ubah email", f.name, "Simpan", "Email") { name ->
                 f.name = name
                 save()
                 refreshFolders()
@@ -650,7 +845,7 @@ class MainActivity : Activity() {
         }, lp(14))
         b.addView(pill("Ubah ID akun", false) {
             d?.dismiss()
-            askText("ID akun", f.id, "Simpan") { v ->
+            askText("Ubah ID akun", f.id, "Simpan", "ID akun") { v ->
                 f.id = v.trim()
                 save()
                 refreshFolders()
@@ -658,7 +853,7 @@ class MainActivity : Activity() {
         }, lp(8))
         b.addView(pill("Hapus folder", false) {
             d?.dismiss()
-            sheet("Hapus folder?", "\"${f.name}\" dan ${f.items.size} akun di dalamnya akan dihapus.",
+            sheet("Hapus folder?", "\"${if (f.name.isBlank()) f.id else f.name}\" dan ${f.items.size} server di dalamnya akan dihapus.",
                 listOf(Triple("Hapus", true) {
                     folders.remove(f)
                     save()
@@ -668,10 +863,46 @@ class MainActivity : Activity() {
         d = showBox(b)
     }
 
-    private fun askText(title: String, initial: String, ok: String, cb: (String) -> Unit) {
+    private fun askAccount() {
+        val b = box()
+        b.addView(label("Akun baru", 18f, fg, true))
+        val fe = input("Email", "", InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS)
+        val fi = input("ID akun", "", InputType.TYPE_CLASS_NUMBER)
+        fe.isSingleLine = true
+        fi.isSingleLine = true
+        b.addView(fe, lp(12))
+        b.addView(fi, lp(8))
+        val row = LinearLayout(this)
+        row.orientation = LinearLayout.HORIZONTAL
+        row.gravity = Gravity.END
+        var d: Dialog? = null
+        row.addView(pill("Batal", false) { d?.dismiss() })
+        val p = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+        p.leftMargin = dp(8)
+        row.addView(pill("Simpan", true) {
+            val e = fe.text.toString().trim()
+            val i = fi.text.toString().trim()
+            if (e.isEmpty() && i.isEmpty()) {
+                fe.error = "Isi email atau ID"
+                return@pill
+            }
+            if (i.isNotEmpty() && folders.any { it.id == i }) {
+                fi.error = "ID sudah ada"
+                return@pill
+            }
+            folders.add(Folder(e, ArrayList(), i))
+            save()
+            refreshFolders()
+            d?.dismiss()
+        }, p)
+        b.addView(row, lp(16))
+        d = showBox(b)
+    }
+
+    private fun askText(title: String, initial: String, ok: String, hint: String = "Judul folder", cb: (String) -> Unit) {
         val b = box()
         b.addView(label(title, 18f, fg, true))
-        val et = input("Judul folder", initial, InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_WORDS)
+        val et = input(hint, initial, InputType.TYPE_CLASS_TEXT)
         et.isSingleLine = true
         b.addView(et, lp(12))
         val row = LinearLayout(this)
@@ -732,36 +963,47 @@ class MainActivity : Activity() {
         // strip total (ringkas)
         val strip = LinearLayout(this)
         strip.orientation = LinearLayout.HORIZONTAL
-        strip.gravity = Gravity.CENTER_VERTICAL
         strip.background = shape(surface, 14, line)
-        strip.setPadding(dp(14), dp(8), dp(14), dp(8))
+        strip.setPadding(dp(8), dp(8), dp(8), dp(8))
         val sa = label("0", 20f, fg, true)
-        val ss = label("0", 20f, fg, true)
-        val la = label("AKUN", 11f, sub, true)
-        val ls = label("SERVER", 11f, sub, true)
-        la.letterSpacing = 0.1f
-        ls.letterSpacing = 0.1f
-        val c1 = LinearLayout(this)
-        c1.orientation = LinearLayout.HORIZONTAL
-        c1.gravity = Gravity.CENTER_VERTICAL
-        c1.addView(sa)
-        val l1 = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
-        l1.leftMargin = dp(6)
-        c1.addView(la, l1)
-        val c2 = LinearLayout(this)
-        c2.orientation = LinearLayout.HORIZONTAL
-        c2.gravity = Gravity.CENTER_VERTICAL
-        c2.addView(ss)
-        val l2 = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
-        l2.leftMargin = dp(6)
-        c2.addView(ls, l2)
-        strip.addView(c1, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        strip.addView(c2, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        val ss = label("0", 20f, cGreen, true)
+        val sp = label("0", 20f, cDone, true)
+        val names3 = arrayOf("SERVER", "SIAP DM", "TERPAKAI")
+        val nums3 = arrayOf(sa, ss, sp)
+        for (i in 0..2) {
+            val cell = LinearLayout(this)
+            cell.orientation = LinearLayout.VERTICAL
+            cell.gravity = Gravity.CENTER
+            val lb = label(names3[i], 10f, sub, true)
+            lb.letterSpacing = 0.1f
+            nums3[i].gravity = Gravity.CENTER
+            cell.addView(nums3[i])
+            cell.addView(lb)
+            strip.addView(cell, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        }
         col.addView(strip, lp(8))
         statAkun = sa
         statServer = ss
-        lblAkun = la
-        lblServer = ls
+        statPakai = sp
+
+        val fr = LinearLayout(this)
+        fr.orientation = LinearLayout.HORIZONTAL
+        val fchips = ArrayList<TextView>()
+        val fnames = arrayOf("Semua", "Siap kirim", "Terpakai")
+        for (i in 0..2) {
+            val c = pill(fnames[i], i == statFilter) {}
+            c.setPadding(dp(14), dp(8), dp(14), dp(8))
+            c.setOnClickListener {
+                statFilter = i
+                for (j in fchips.indices) restyle(fchips[j], j == i)
+                refreshData()
+            }
+            fchips.add(c)
+            val cp = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+            cp.rightMargin = dp(8)
+            fr.addView(c, cp)
+        }
+        col.addView(fr, lp(8))
 
         // daftar + tombol
         val frame = FrameLayout(this)
@@ -775,7 +1017,7 @@ class MainActivity : Activity() {
         frame.addView(em, FrameLayout.LayoutParams(-1, -1))
         lv.emptyView = em
 
-        val fb = fab("+  Tambah") { openForm(null) }
+        val fb = fab("+  Server") { openForm(null) }
         val fp = FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
         fp.gravity = Gravity.BOTTOM or Gravity.END
         fp.bottomMargin = dp(18)
@@ -837,12 +1079,19 @@ class MainActivity : Activity() {
             th.addView(pill("Pilih semua", false) { toggleAll() })
         } else {
             th.addView(iconBtn(0, false) { showFolders(-1) }, LinearLayout.LayoutParams(dp(40), dp(40)))
-            val t = label(f.name, 20f, fg, true)
-            t.isSingleLine = true
-            t.ellipsize = TextUtils.TruncateAt.END
+            val tl = LinearLayout(this)
+            tl.orientation = LinearLayout.VERTICAL
+            val tn = label(if (f.name.isBlank()) "Email belum diisi" else f.name, 16f, if (f.name.isBlank()) cAmber else fg, true)
+            tn.isSingleLine = true
+            tn.ellipsize = TextUtils.TruncateAt.END
+            tn.setOnClickListener { copyText("Email", f.name) }
+            val ti = label(if (f.id.isBlank()) "ID belum ada" else "ID ${f.id}", 12f, sub, false)
+            ti.setOnClickListener { copyText("ID", f.id) }
+            tl.addView(tn)
+            tl.addView(ti)
             val tp = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
             tp.leftMargin = dp(12)
-            th.addView(t, tp)
+            th.addView(tl, tp)
             th.addView(iconBtn(1, searchOpen) { toggleSearch() }, iconLp())
             th.addView(iconBtn(2, false) { menuData() }, iconLp())
         }
@@ -870,7 +1119,7 @@ class MainActivity : Activity() {
     }
 
     // ---------- pencarian ----------
-    private fun searchType() = if (searchField == 1) InputType.TYPE_CLASS_NUMBER else InputType.TYPE_CLASS_TEXT
+    private fun searchType() = if (searchField == 0) InputType.TYPE_CLASS_NUMBER else InputType.TYPE_CLASS_TEXT
 
     private fun buildSearch() {
         val sh = searchHolder ?: return
@@ -980,11 +1229,12 @@ class MainActivity : Activity() {
         val active = searchOpen && applied
         shown.clear()
         for (r in f.items) {
+            if (statFilter == 1 && Store.rank(r.note) != 2) continue
+            if (statFilter == 2 && Store.rank(r.note) != 3) continue
             if (active) {
                 val v = when (searchField) {
-                    0 -> r.email
-                    1 -> r.server
-                    2 -> r.level
+                    0 -> r.server
+                    1 -> r.level
                     else -> r.note
                 }
                 if (q.isEmpty()) {
@@ -1008,9 +1258,8 @@ class MainActivity : Activity() {
         val searching = active
         statAkun?.text = shown.size.toString()
         statServer?.text = shown.count { Store.rank(it.note) == 2 }.toString()
-        lblAkun?.text = if (searching) "SERVER DICARI" else "SERVER"
-        lblServer?.text = if (searching) "SIAP DM DICARI" else "SIAP DM"
-        emptyD?.text = if (f.items.isEmpty()) "Belum ada data.\nTekan + Tambah untuk mulai." else "Tidak ada hasil."
+        statPakai?.text = shown.count { Store.rank(it.note) == 3 }.toString()
+        emptyD?.text = if (f.items.isEmpty()) "Belum ada server.\nTekan + Server untuk mulai." else "Tidak ada hasil."
     }
 
     // ---------- baris akun ----------
@@ -1131,10 +1380,15 @@ class MainActivity : Activity() {
                 chk.scaleX = 1f
                 chk.scaleY = 1f
             }
-            tvEmail.text = if (r.email.isBlank()) "Server ${r.server}" else r.email
-            tvServer.text = r.server
-            tvServer.visibility = if (r.server.isBlank() || r.email.isBlank()) View.GONE else View.VISIBLE
+            tvEmail.text = "Server ${r.server}"
+            tvServer.visibility = View.GONE
             tvNote.text = r.note
+            tvNote.setTextColor(when (Store.rank(r.note)) {
+                2 -> cGreen
+                1 -> cAmber
+                3 -> cDone
+                else -> sub
+            })
             tvNote.visibility = if (r.note.isBlank()) View.GONE else View.VISIBLE
             tvLevel.text = r.level
             tvLevel.visibility = if (r.level.isBlank()) View.GONE else View.VISIBLE
@@ -1234,16 +1488,14 @@ class MainActivity : Activity() {
     private fun openForm(rec: Rec?) {
         val f = current ?: return
         val b = box()
-        b.addView(label(if (rec == null) "Tambah Data" else "Edit Data", 20f, fg, true))
+        b.addView(label(if (rec == null) "Tambah Server" else "Edit Server", 20f, fg, true))
         val t = InputType.TYPE_CLASS_TEXT
-        val fEmail = input("Email", rec?.email ?: "", t or InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS)
         val fServer = input("Server", rec?.server ?: "", InputType.TYPE_CLASS_NUMBER)
         val fLevel = input("Level", rec?.level ?: "", t)
         val fNote = input("Keterangan", rec?.note ?: "", t or InputType.TYPE_TEXT_FLAG_MULTI_LINE)
         fNote.minLines = 2
         fNote.gravity = Gravity.TOP
-        b.addView(fEmail, lp(14))
-        b.addView(fServer, lp(10))
+        b.addView(fServer, lp(14))
         b.addView(fLevel, lp(10))
         b.addView(fNote, lp(10))
 
@@ -1262,7 +1514,6 @@ class MainActivity : Activity() {
         val pSave = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
         pSave.leftMargin = dp(8)
         row.addView(pill("Simpan", true) {
-            val email = fEmail.text.toString().trim()
             val server = fServer.text.toString().trim()
             if (server.isEmpty()) {
                 fServer.error = "Wajib diisi"
@@ -1271,9 +1522,8 @@ class MainActivity : Activity() {
             val level = fLevel.text.toString().trim()
             val note = fNote.text.toString().trim()
             if (rec == null) {
-                f.items.add(Rec(email, server, level, note))
+                f.items.add(Rec("", server, level, note))
             } else {
-                rec.email = email
                 rec.server = server
                 rec.level = level
                 rec.note = note
@@ -1295,20 +1545,22 @@ class MainActivity : Activity() {
         val targets = ArrayList<Rec>(selected)
         if (targets.isEmpty()) return
         val b = box()
-        b.addView(label("Edit ${targets.size} akun", 20f, fg, true))
+        b.addView(label("Edit ${targets.size} server", 20f, fg, true))
         b.addView(label("Pilih yang mau diubah:", 13f, sub, false), lp(4))
 
         val t = InputType.TYPE_CLASS_TEXT
-        val on = BooleanArray(4)
+        val on = BooleanArray(3)
         val fields = arrayOf(
-            input("Email baru", "", t or InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS),
             input("Server baru", "", InputType.TYPE_CLASS_NUMBER),
             input("Level baru", "", t),
             input("Keterangan baru", "", t or InputType.TYPE_TEXT_FLAG_MULTI_LINE)
         )
         val chips = ArrayList<TextView>()
-        for (i in 0 until 4) {
+        val crow = LinearLayout(this)
+        crow.orientation = LinearLayout.HORIZONTAL
+        for (i in 0 until 3) {
             val c = pill(fieldNames[i], false) {}
+            c.setPadding(dp(8), dp(10), dp(8), dp(10))
             c.setOnClickListener {
                 on[i] = !on[i]
                 restyle(c, on[i])
@@ -1316,18 +1568,12 @@ class MainActivity : Activity() {
             }
             chips.add(c)
             fields[i].visibility = View.GONE
+            val p = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+            if (i > 0) p.leftMargin = dp(6)
+            crow.addView(c, p)
         }
-        for (r in 0 until 2) {
-            val row = LinearLayout(this)
-            row.orientation = LinearLayout.HORIZONTAL
-            for (k in 0 until 2) {
-                val p = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
-                if (k == 0) p.rightMargin = dp(4) else p.leftMargin = dp(4)
-                row.addView(chips[r * 2 + k], p)
-            }
-            b.addView(row, lp(if (r == 0) 10 else 8))
-        }
-        for (i in 0 until 4) b.addView(fields[i], lp(10))
+        b.addView(crow, lp(10))
+        for (i in 0 until 3) b.addView(fields[i], lp(10))
 
         val btn = LinearLayout(this)
         btn.orientation = LinearLayout.HORIZONTAL
@@ -1343,22 +1589,17 @@ class MainActivity : Activity() {
                 toast("Pilih field yang mau diubah")
                 return@pill
             }
-            if (on[0] && fields[0].text.toString().trim().isEmpty()) {
-                fields[0].error = "Wajib diisi"
-                return@pill
-            }
             for (r in targets) {
-                if (on[0]) r.email = fields[0].text.toString().trim()
-                if (on[1]) r.server = fields[1].text.toString().trim()
-                if (on[2]) r.level = fields[2].text.toString().trim()
-                if (on[3]) r.note = fields[3].text.toString().trim()
+                if (on[0]) r.server = fields[0].text.toString().trim()
+                if (on[1]) r.level = fields[1].text.toString().trim()
+                if (on[2]) r.note = fields[2].text.toString().trim()
             }
             selected.clear()
             save()
             refreshData()
             onSelectionChanged()
             d?.dismiss()
-            toast("${targets.size} akun diubah")
+            toast("${targets.size} server diubah")
         }, ps)
         b.addView(btn, lp(18))
 
@@ -1379,34 +1620,17 @@ class MainActivity : Activity() {
 
     private fun isEmptyData(r: Rec) = r.server.isBlank() && r.level.isBlank() && r.note.isBlank()
 
-    // Hapus = kosongkan server, level, keterangan (email tetap).
-    // Akun yang datanya sudah kosong, kalau dihapus lagi, baru hilang dari daftar.
     private fun confirmWipe(f: Folder, targets: List<Rec>, after: () -> Unit) {
-        var clear = 0
-        for (r in targets) if (!isEmptyData(r)) clear++
-        val remove = targets.size - clear
-        val msg = if (remove == 0) {
-            "Server, level, dan keterangan $clear akun akan dikosongkan. Email tetap ada."
-        } else if (clear == 0) {
-            "$remove akun yang datanya sudah kosong akan dihapus dari daftar."
-        } else {
-            "Server, level, dan keterangan $clear akun akan dikosongkan (email tetap ada). $remove akun yang sudah kosong akan dihapus dari daftar."
-        }
-        sheet("Hapus ${targets.size} akun?", msg, listOf(Triple("Hapus", true) {
-            for (r in targets) {
-                if (isEmptyData(r)) {
+        sheet("Hapus ${targets.size} server?", "${targets.size} server akan dihapus dari folder ini.",
+            listOf(Triple("Hapus", true) {
+                for (r in targets) {
                     f.items.remove(r)
                     selected.remove(r)
-                } else {
-                    r.server = ""
-                    r.level = ""
-                    r.note = ""
                 }
-            }
-            save()
-            refreshData()
-            after()
-        }))
+                save()
+                refreshData()
+                after()
+            }))
     }
 
     // Salin akun terpilih: baris yang kosong dilewati
@@ -1417,7 +1641,6 @@ class MainActivity : Activity() {
         for (r in f.items) {
             if (!selected.contains(r)) continue
             val lines = ArrayList<String>()
-            if (r.email.isNotBlank()) lines.add("email:${r.email}")
             if (r.server.isNotBlank()) lines.add("server:${r.server}")
             if (r.level.isNotBlank()) lines.add("level:${r.level}")
             if (r.note.isNotBlank()) lines.add("keterangan:${r.note}")
@@ -1428,7 +1651,7 @@ class MainActivity : Activity() {
         if (n == 0) return
         val cm = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
         cm.setPrimaryClip(ClipData.newPlainText("Catatan Cabang", sb.toString()))
-        toast("$n akun disalin")
+        toast("$n server disalin")
     }
 
     // ---------- aksi lain ----------
@@ -1439,8 +1662,8 @@ class MainActivity : Activity() {
             toast("Tidak ada data")
             return
         }
-        // format: email<TAB>server<TAB>level<TAB>keterangan  (satu baris per data)
-        val text = list.joinToString("\n") { "${it.email}\t${it.server}\t${it.level}\t${it.note}" }
+        // format: server<TAB>level<TAB>keterangan  (satu baris per server)
+        val text = list.joinToString("\n") { "${it.server}\t${it.level}\t${it.note}" }
         val cm = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
         cm.setPrimaryClip(ClipData.newPlainText("Catatan Cabang", text))
         toast("${list.size} data disalin")
@@ -1452,7 +1675,7 @@ class MainActivity : Activity() {
             toast("Data sudah kosong")
             return
         }
-        sheet("Hapus semua data?", "${f.items.size} akun di folder ini akan dihapus permanen. Buat backup dulu kalau perlu.",
+        sheet("Hapus semua data?", "${f.items.size} server di folder ini akan dihapus permanen. Buat backup dulu kalau perlu.",
             listOf(Triple("Hapus Semua", true) {
                 f.items.clear()
                 selected.clear()
