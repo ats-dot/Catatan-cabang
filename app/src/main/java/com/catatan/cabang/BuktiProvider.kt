@@ -14,6 +14,7 @@ import android.provider.OpenableColumns
 // Pintu masuk untuk aplikasi Klaim & Kirim:
 //  - call("order", key, extras)  : buat / perbarui catatan pesanan (bukti kirim)
 //  - call("server", idAkun, extras) : perbarui level / keterangan satu server (server, level, keterangan)
+//  - call("akun", idAkun, extras)   : akun baru dari Pembuat Akun (email, servers = "57092,57093")
 //  - openFile(.../foto/<key>/before.jpg atau after.jpg, "w") : tulis foto
 // Juga dipakai untuk membagikan foto ke aplikasi lain (baca).
 class BuktiProvider : ContentProvider() {
@@ -74,6 +75,11 @@ class BuktiProvider : ContentProvider() {
         val a = arg ?: return null
         when (method) {
             "order" -> BuktiStore.upsert(ctx, a, extras)
+            "akun" -> {
+                val ex = extras ?: return null
+                val servers = (ex.getString("servers") ?: "").split(Regex("[^0-9]+")).filter { it.isNotEmpty() }
+                Store.upsertFromAts(ctx, ex.getString("email") ?: "", a, servers)
+            }
             "server" -> {
                 val ex = extras ?: return null
                 val sv = ex.getString("server") ?: return null

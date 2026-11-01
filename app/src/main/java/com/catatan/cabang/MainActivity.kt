@@ -818,7 +818,12 @@ class MainActivity : Activity() {
         em.gravity = Gravity.CENTER
         body0.addView(em, FrameLayout.LayoutParams(-1, -1))
         lv.emptyView = em
-        val fb = fab("+  Akun") { askAccount() }
+        val fb = fab("+") { askAccount() }
+        fb.textSize = 26f
+        fb.minWidth = dp(58)
+        fb.minHeight = dp(58)
+        fb.setPadding(0, 0, 0, dp(2))
+        fb.background = shape(fg, 29)
         val fp = FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
         fp.gravity = Gravity.BOTTOM or Gravity.END
         fp.bottomMargin = dp(18)
@@ -835,7 +840,7 @@ class MainActivity : Activity() {
         val adb = BuktiAdapter()
         lvb.adapter = adb
         p1.addView(lvb, FrameLayout.LayoutParams(-1, -1))
-        val em1 = label("Belum ada bukti kirim.\nFolder muncul otomatis setelah satu pesanan selesai.", 14f, sub, false)
+        val em1 = label("", 14f, sub, false)
         em1.gravity = Gravity.CENTER
         p1.addView(em1, FrameLayout.LayoutParams(-1, -1))
         lvb.emptyView = em1
@@ -1198,7 +1203,7 @@ class MainActivity : Activity() {
             for (r in f.items) {
                 servers++
                 val k = Store.rank(r.note)
-                if (k == 2) siap++ else if (k == 3) pakai++
+                if (Store.isReady(r)) siap++ else if (k == 3) pakai++
             }
         }
         val belum = servers - siap - pakai
@@ -1257,7 +1262,7 @@ class MainActivity : Activity() {
         }
         adapterF?.notifyDataSetChanged()
         updateSummary()
-        emptyF?.text = if (folders.isEmpty()) "Belum ada akun.\nTekan + Akun, atau tunggu kiriman dari aplikasi pembuat akun." else "Tidak ada hasil."
+        emptyF?.text = if (folders.isEmpty()) "" else "Tidak ada hasil."
     }
 
     // =====================================================
@@ -1595,7 +1600,7 @@ class MainActivity : Activity() {
                 tvName.setTextColor(fg)
             }
             tvId.text = if (f.id.isBlank()) "ID belum ada" else "ID ${f.id}"
-            val siap = f.items.count { Store.rank(it.note) == 2 }
+            val siap = f.items.count { Store.isReady(it) }
             val pakai = f.items.count { Store.rank(it.note) == 3 }
             val sb = SpannableStringBuilder()
             sb.append("${f.items.size} server")
@@ -1723,13 +1728,6 @@ class MainActivity : Activity() {
         popupMenu(listOf<Pair<String, () -> Unit>>(
             Pair("Backup semua") { doBackup(true) },
             Pair("Import") { doImport(true) },
-            Pair("Bukti contoh (uji)") {
-                BuktiStore.addSample(this)
-                load()
-                refreshBukti()
-                refreshFolders()
-                toast("Bukti contoh ditambahkan")
-            },
             Pair(if (dark) "Mode Terang" else "Mode Gelap") { toggleTheme() }
         ))
     }
@@ -2030,7 +2028,7 @@ class MainActivity : Activity() {
         val active = searchOpen && applied
         shown.clear()
         for (r in f.items) {
-            if (statFilter == 1 && Store.rank(r.note) != 2) continue
+            if (statFilter == 1 && !Store.isReady(r)) continue
             if (statFilter == 2 && Store.rank(r.note) != 3) continue
             if (active) {
                 val v = when (searchField) {
@@ -2058,7 +2056,7 @@ class MainActivity : Activity() {
         adapterD?.notifyDataSetChanged()
         val searching = active
         statAkun?.text = shown.size.toString()
-        statServer?.text = shown.count { Store.rank(it.note) == 2 }.toString()
+        statServer?.text = shown.count { Store.isReady(it) }.toString()
         statPakai?.text = shown.count { Store.rank(it.note) == 3 }.toString()
         emptyD?.text = if (f.items.isEmpty()) "Belum ada server.\nTekan + Server untuk mulai." else "Tidak ada hasil."
     }
@@ -2185,7 +2183,7 @@ class MainActivity : Activity() {
             tvServer.visibility = View.GONE
             tvNote.text = r.note
             tvNote.setTextColor(when (Store.rank(r.note)) {
-                2 -> cGreen
+                2 -> if (Store.isReady(r)) cGreen else sub
                 1 -> cAmber
                 3 -> cDone
                 else -> sub

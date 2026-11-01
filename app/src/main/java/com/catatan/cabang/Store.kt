@@ -124,6 +124,11 @@ object Store {
         }
     }
 
+    // Server siap kirim: keterangan "1000 dm" DAN level minimal 15 (diamond 1000 tapi level di bawah 15 belum siap)
+    const val READY_LEVEL = 15
+
+    fun isReady(r: Rec): Boolean = rank(r.note) == 2 && num(r.level) >= READY_LEVEL
+
     private fun num(s: String): Long = Regex("\\d+").find(s)?.value?.toLongOrNull() ?: 0L
 
     private fun sameServer(a: String, b: String): Boolean {
