@@ -52,7 +52,7 @@ jobs:
                                   if m_id:
                                       items.append(f"- Baris {idx}: ID `@+id/{m_id.group(1)}`")
                           if items:
-                              lines.extend(items[:80])
+                              lines.extend(items)
                           lines.append("")
               with open(report_path, "w", encoding="utf-8") as out:
                   out.write("\n".join(lines))
