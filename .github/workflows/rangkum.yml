@@ -19,12 +19,38 @@ jobs:
         run: pip install graphifyy
 
       - name: Buat rangkuman otomatis
-        run: graphify extract . --code-only
+        run: |
+          mkdir -p graphify-out
+          graphify extract . --code-only || true
+          python3 - << 'EOF'
+          import os, re
+
+          out_dir = "graphify-out"
+          report_path = os.path.join(out_dir, "GRAPH_REPORT.md")
+
+          if not os.path.exists(report_path):
+              lines = ["# Peta Struktur & Rangkuman Proyek\n"]
+              skip = {'.git', '.github', 'graphify-out', 'node_modules'}
+              for root, dirs, files in os.walk("."):
+                  dirs[:] = [d for d in dirs if d not in skip]
+                  for f in sorted(files):
+                      if f.endswith(('.html', '.js', '.css', '.py', '.ts', '.json', '.sh')):
+                          p = os.path.join(root, f)
+                          content = open(p, encoding='utf-8', errors='ignore').read()
+                          funcs = re.findall(r'(?:function\s+([a-zA-Z0-9_]+)|const\s+([a-zA-Z0-9_]+)\s*=\s*(?:async\s*)?\(|def\s+([a-zA-Z0-9_]+)|id=["\']([a-zA-Z0-9_-]+)["\'])', content)
+                          names = sorted(set(next(x for x in tup if x) for tup in funcs if any(tup)))
+                          lines.append(f"## File: `{p}` ({len(content.splitlines())} baris)")
+                          if names:
+                              lines.append("- **Daftar Fungsi / Elemen ID:** " + ", ".join(f"`{n}`" for n in names[:50]))
+                          lines.append("")
+              with open(report_path, "w", encoding="utf-8") as out:
+                  out.write("\n".join(lines))
+          EOF
 
       - name: Simpan hasil rangkuman ke dalam repo
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add graphify-out/GRAPH_REPORT.md
+          git add graphify-out/
           git commit -m "Update rangkuman kode [skip ci]" || exit 0
           git push
