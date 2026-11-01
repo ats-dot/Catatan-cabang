@@ -24,5 +24,9 @@
                 <action android:name="com.catatan.cabang.UPDATE_SERVER" />
             </intent-filter>
         </receiver>
+        <provider
+            android:name=".BuktiProvider"
+            android:authorities="com.catatan.cabang.bukti"
+            android:exported="true" />
     </application>
 </manifest>
