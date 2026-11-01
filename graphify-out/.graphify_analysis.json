@@ -379,13 +379,13 @@
       "degree": 20
     },
     {
-      "id": "app_src_main_java_com_catatan_cabang_bukti_order",
-      "label": "Order",
+      "id": "app_src_main_java_com_catatan_cabang_mainactivity_folder",
+      "label": "Folder",
       "degree": 18
     },
     {
-      "id": "app_src_main_java_com_catatan_cabang_mainactivity_folder",
-      "label": "Folder",
+      "id": "app_src_main_java_com_catatan_cabang_bukti_order",
+      "label": "Order",
       "degree": 18
     },
     {
@@ -394,23 +394,23 @@
       "degree": 14
     },
     {
-      "id": "app_src_main_java_com_catatan_cabang_buktiprovider_buktiprovider",
-      "label": "BuktiProvider",
-      "degree": 11
-    },
-    {
       "id": "app_src_main_java_com_catatan_cabang_mainactivity_rec",
       "label": "Rec",
       "degree": 11
     },
     {
-      "id": "app_src_main_java_com_catatan_cabang_mainactivity_mainactivity_watcher_object_textwatcher_l456",
-      "label": "TextWatcher",
-      "degree": 7
+      "id": "app_src_main_java_com_catatan_cabang_buktiprovider_buktiprovider",
+      "label": "BuktiProvider",
+      "degree": 11
     },
     {
       "id": "app_src_main_java_com_catatan_cabang_mainactivity_homepager",
       "label": "HomePager",
+      "degree": 7
+    },
+    {
+      "id": "app_src_main_java_com_catatan_cabang_mainactivity_mainactivity_watcher_object_textwatcher_l456",
+      "label": "TextWatcher",
       "degree": 7
     },
     {
