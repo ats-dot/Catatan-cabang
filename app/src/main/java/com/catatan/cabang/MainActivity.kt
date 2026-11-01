@@ -8,6 +8,7 @@ import android.app.Activity
 import android.app.Dialog
 import android.content.ClipData
 import android.content.ClipboardManager
+import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
@@ -19,10 +20,13 @@ import android.graphics.RectF
 import android.graphics.Typeface
 import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.GradientDrawable
+import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.text.Editable
+import android.provider.MediaStore
 import android.text.InputType
 import android.text.SpannableStringBuilder
 import android.text.Spanned
@@ -48,6 +52,7 @@ import android.widget.BaseAdapter
 import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.HorizontalScrollView
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ListView
 import android.widget.ScrollView
@@ -55,6 +60,9 @@ import android.widget.TextView
 import android.widget.Toast
 import org.json.JSONArray
 import org.json.JSONObject
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import kotlin.math.abs
 
 class Rec(
@@ -177,6 +185,12 @@ class MainActivity : Activity() {
     private val tabLabels = ArrayList<TextView>()
     private var searchBtn: FrameLayout? = null
     private val argb = ArgbEvaluator()
+
+    // bukti kirim
+    private val orders = ArrayList<Order>()
+    private var curOrder: Order? = null
+    private var lvBukti: ListView? = null
+    private var adapterB: BaseAdapter? = null
     private var query = ""               // teks yang sedang diketik
     private var applied = false          // sudah dikonfirmasi (tekan centang)?
     private var appliedQ = ""            // teks yang dipakai saat dikonfirmasi
@@ -234,10 +248,20 @@ class MainActivity : Activity() {
 
     private fun reloadFromStore() {
         Store.changed = false
+        val oc = curOrder
+        if (oc != null) {
+            load()
+            refreshFolders()
+            refreshBukti()
+            val n = orders.firstOrNull { it.key == oc.key }
+            if (n == null) leaveFolder(true) else showOrder(n, false)
+            return
+        }
         val wasIn = current
         val keyId = wasIn?.id ?: ""
         val keyName = wasIn?.name ?: ""
         load()
+        refreshBukti()
         selected.clear()
         if (wasIn != null) {
             current = folders.firstOrNull {
@@ -261,7 +285,7 @@ class MainActivity : Activity() {
             onSelectionChanged()
         } else if (searchOpen && current != null) {
             toggleSearch()
-        } else if (current != null) {
+        } else if (current != null || curOrder != null) {
             showFolders(-1)
         } else if (fOpen && topTab == 0) {
             closeFolderSearch()
@@ -440,8 +464,10 @@ class MainActivity : Activity() {
 
     private fun rebuild() {
         val c = current
+        val oc = curOrder
         buildRoot()
         if (c != null) showData(c, 0)
+        else if (oc != null) showOrder(oc, false)
     }
 
     // ---------- gesture: tap / tahan 200ms / geser kiri ----------
@@ -640,6 +666,7 @@ class MainActivity : Activity() {
 
     private fun leaveFolder(animated: Boolean) {
         current = null
+        curOrder = null
         selected.clear()
         searchOpen = false
         query = ""
@@ -731,6 +758,7 @@ class MainActivity : Activity() {
             return
         }
         current = null
+        curOrder = null
         selected.clear()
         searchOpen = false
         query = ""
@@ -791,9 +819,17 @@ class MainActivity : Activity() {
         emptyF = em
 
         val p1 = FrameLayout(this)
+        val lvb = ListView(this)
+        styleList(lvb)
+        val adb = BuktiAdapter()
+        lvb.adapter = adb
+        p1.addView(lvb, FrameLayout.LayoutParams(-1, -1))
         val em1 = label("Belum ada bukti kirim.\nFolder muncul otomatis setelah satu pesanan selesai.", 14f, sub, false)
         em1.gravity = Gravity.CENTER
         p1.addView(em1, FrameLayout.LayoutParams(-1, -1))
+        lvb.emptyView = em1
+        lvBukti = lvb
+        adapterB = adb
 
         pg.addView(p0, FrameLayout.LayoutParams(-1, -1))
         pg.addView(p1, FrameLayout.LayoutParams(-1, -1))
@@ -1126,6 +1162,262 @@ class MainActivity : Activity() {
         emptyF?.text = if (folders.isEmpty()) "Belum ada akun.\nTekan + Akun, atau tunggu kiriman dari aplikasi pembuat akun." else "Tidak ada hasil."
     }
 
+    // =====================================================
+    // BUKTI KIRIM
+    // =====================================================
+    private fun refreshBukti() {
+        adapterB?.notifyDataSetChanged()
+    }
+
+    private fun orderTitle(o: Order): String {
+        val base = if (o.id.isBlank()) "ID belum ada" else o.id
+        return if (o.nick.isBlank()) base else "$base · ${o.nick}"
+    }
+
+    private fun fmtNum(n: Long): String =
+        java.text.NumberFormat.getIntegerInstance(Locale("id", "ID")).format(n)
+
+    private fun fmtTime(t: Long): String =
+        SimpleDateFormat("d MMM yyyy, HH.mm", Locale("id", "ID")).format(Date(t))
+
+    private fun orderInfo(o: Order): String =
+        if (o.done) "${fmtNum(o.sent)} BBC · ${o.servers.size} server"
+        else "Berjalan · ${fmtNum(o.sent)} dari ${fmtNum(o.target)} BBC"
+
+    private fun photoUri(o: Order, kind: String): Uri =
+        Uri.parse("content://com.catatan.cabang.bukti/foto/${BuktiStore.safe(o.key)}/$kind.jpg")
+
+    private inner class BuktiAdapter : BaseAdapter() {
+        override fun getCount() = orders.size
+        override fun getItem(position: Int): Any = orders[position]
+        override fun getItemId(position: Int) = position.toLong()
+        override fun getView(position: Int, convertView: View?, parent: ViewGroup?): View {
+            val h: BuktiHolder
+            val v: View
+            if (convertView == null) {
+                h = BuktiHolder()
+                v = h.root
+                v.tag = h
+            } else {
+                v = convertView
+                h = convertView.tag as BuktiHolder
+            }
+            h.bind(position, orders[position])
+            return v
+        }
+    }
+
+    private inner class BuktiHolder {
+        val ctx: Context = this@MainActivity
+        val root = FrameLayout(ctx)
+        private val tvName = TextView(ctx)
+        private val tvInfo = TextView(ctx)
+        private val tvTime = TextView(ctx)
+        private var pos = 0
+
+        init {
+            val card = LinearLayout(ctx)
+            card.orientation = LinearLayout.HORIZONTAL
+            card.gravity = Gravity.CENTER_VERTICAL
+            card.background = shape(surface, 18, line)
+            card.setPadding(dp(16), dp(14), dp(14), dp(14))
+
+            val mid = LinearLayout(ctx)
+            mid.orientation = LinearLayout.VERTICAL
+            tvName.textSize = 16f
+            tvName.setTextColor(fg)
+            tvName.typeface = Typeface.DEFAULT_BOLD
+            tvName.isSingleLine = true
+            tvName.ellipsize = TextUtils.TruncateAt.END
+            tvInfo.textSize = 12f
+            tvInfo.setTextColor(sub)
+            tvTime.textSize = 12f
+            tvTime.setTextColor(sub)
+            mid.addView(tvName)
+            mid.addView(tvInfo, lp(2))
+            mid.addView(tvTime, lp(2))
+            card.addView(mid, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            card.addView(IconView(ctx, 5, sub, bg), LinearLayout.LayoutParams(dp(20), dp(20)))
+
+            root.setPadding(0, 0, 0, dp(10))
+            root.addView(card, FrameLayout.LayoutParams(-1, -2))
+
+            Gesture(root,
+                { orders.getOrNull(pos)?.let { showOrder(it, true) } },
+                { orders.getOrNull(pos)?.let { orderOptions(it) } },
+                null).attach()
+        }
+
+        fun bind(p: Int, o: Order) {
+            pos = p
+            tvName.text = orderTitle(o)
+            tvInfo.text = orderInfo(o)
+            tvInfo.setTextColor(if (o.done) sub else cAmber)
+            tvTime.text = fmtTime(o.time)
+        }
+    }
+
+    private fun orderOptions(o: Order) {
+        val b = box()
+        b.addView(label(orderTitle(o), 18f, fg, true))
+        var d: Dialog? = null
+        b.addView(pill("Hapus bukti", false) {
+            d?.dismiss()
+            sheet("Hapus bukti?", "Foto dan catatan pesanan ini akan dihapus dari HP ini.",
+                listOf(Triple("Hapus", true) {
+                    BuktiStore.delete(this, o)
+                    orders.remove(o)
+                    refreshBukti()
+                }))
+        }, lp(14))
+        d = showBox(b)
+    }
+
+    private fun showOrder(o: Order, animated: Boolean) {
+        curOrder = o
+        current = null
+        applyWindow()
+        val col = column()
+
+        val th = LinearLayout(this)
+        th.orientation = LinearLayout.HORIZONTAL
+        th.gravity = Gravity.CENTER_VERTICAL
+        th.addView(iconBtn(0, false) { showFolders(-1) }, LinearLayout.LayoutParams(dp(40), dp(40)))
+        val tl = LinearLayout(this)
+        tl.orientation = LinearLayout.VERTICAL
+        val tn = label(orderTitle(o), 16f, fg, true)
+        tn.isSingleLine = true
+        tn.ellipsize = TextUtils.TruncateAt.END
+        val ti = label(orderInfo(o) + " · " + fmtTime(o.time), 12f, sub, false)
+        ti.isSingleLine = true
+        ti.ellipsize = TextUtils.TruncateAt.END
+        tl.addView(tn)
+        tl.addView(ti)
+        val tp = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+        tp.leftMargin = dp(12)
+        th.addView(tl, tp)
+        col.addView(th, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(44)))
+
+        val ar = LinearLayout(this)
+        ar.orientation = LinearLayout.HORIZONTAL
+        ar.addView(pill("Unduh", true) { downloadOrder(o) })
+        val pk = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+        pk.leftMargin = dp(8)
+        ar.addView(pill("Kirim", false) { shareOrder(o) }, pk)
+        col.addView(ar, lp(12))
+
+        val sv = ScrollView(this)
+        sv.isVerticalScrollBarEnabled = false
+        sv.overScrollMode = View.OVER_SCROLL_NEVER
+        val body = LinearLayout(this)
+        body.orientation = LinearLayout.VERTICAL
+        body.setPadding(0, 0, 0, dp(24))
+        body.addView(photoCard("Before", o, "before"), lp(0))
+        body.addView(photoCard("After", o, "after"), lp(10))
+        body.addView(serverCard(o), lp(10))
+        sv.addView(body)
+        col.addView(sv, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f).also { it.topMargin = dp(12) })
+
+        pushDetail(col, animated)
+    }
+
+    private fun photoCard(title: String, o: Order, kind: String): LinearLayout {
+        val card = LinearLayout(this)
+        card.orientation = LinearLayout.VERTICAL
+        card.background = shape(surface, 16, line)
+        card.setPadding(dp(12), dp(12), dp(12), dp(12))
+        card.addView(label(title, 13f, sub, true))
+        val f = BuktiStore.photoFile(this, o.key, kind)
+        if (f.exists()) {
+            val iv = ImageView(this)
+            iv.scaleType = ImageView.ScaleType.FIT_CENTER
+            iv.adjustViewBounds = true
+            iv.minimumHeight = dp(140)
+            iv.background = shape(surface2, 12)
+            iv.setOnClickListener { viewPhoto(o, kind) }
+            card.addView(iv, lp(8))
+            Thread {
+                val bmp = BuktiStore.decode(f.path, 1200)
+                runOnUiThread { if (bmp != null) iv.setImageBitmap(bmp) }
+            }.start()
+        } else {
+            card.addView(label("Foto belum ada", 13f, sub, false), lp(8))
+        }
+        return card
+    }
+
+    private fun serverCard(o: Order): LinearLayout {
+        val card = LinearLayout(this)
+        card.orientation = LinearLayout.VERTICAL
+        card.background = shape(surface, 16, line)
+        card.setPadding(dp(12), dp(12), dp(12), dp(12))
+        card.addView(label("Server dipakai (${o.servers.size})", 13f, sub, true))
+        if (o.servers.isEmpty()) {
+            card.addView(label("Belum tercatat", 13f, sub, false), lp(8))
+        } else {
+            for (s in o.servers) card.addView(label(s, 14f, fg, false), lp(6))
+        }
+        return card
+    }
+
+    private fun viewPhoto(o: Order, kind: String) {
+        try {
+            val i = Intent(Intent.ACTION_VIEW)
+            i.setDataAndType(photoUri(o, kind), "image/jpeg")
+            i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            startActivity(i)
+        } catch (e: Exception) {
+            toast("Tidak ada aplikasi untuk membuka foto")
+        }
+    }
+
+    private fun shareOrder(o: Order) {
+        val uris = ArrayList<Uri>()
+        for (k in arrayOf("before", "after")) {
+            if (BuktiStore.photoFile(this, o.key, k).exists()) uris.add(photoUri(o, k))
+        }
+        if (uris.isEmpty()) {
+            toast("Belum ada foto")
+            return
+        }
+        try {
+            val i = Intent(Intent.ACTION_SEND_MULTIPLE)
+            i.type = "image/jpeg"
+            i.putParcelableArrayListExtra(Intent.EXTRA_STREAM, uris)
+            i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            val cd = ClipData.newUri(contentResolver, "bukti", uris[0])
+            for (k in 1 until uris.size) cd.addItem(ClipData.Item(uris[k]))
+            i.clipData = cd
+            startActivity(Intent.createChooser(i, "Kirim bukti"))
+        } catch (e: Exception) {
+            toast("Gagal membuka menu bagikan")
+        }
+    }
+
+    private fun downloadOrder(o: Order) {
+        if (Build.VERSION.SDK_INT < 29) {
+            toast("Butuh Android 10 ke atas")
+            return
+        }
+        var n = 0
+        val stamp = SimpleDateFormat("yyyyMMdd_HHmm", Locale.US).format(Date(o.time))
+        for (k in arrayOf("before", "after")) {
+            val f = BuktiStore.photoFile(this, o.key, k)
+            if (!f.exists()) continue
+            try {
+                val cv = ContentValues()
+                cv.put(MediaStore.Images.Media.DISPLAY_NAME, "${o.id}_${stamp}_$k.jpg")
+                cv.put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg")
+                cv.put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/CatatanCabang")
+                val uri = contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, cv) ?: continue
+                contentResolver.openOutputStream(uri)?.use { out -> f.inputStream().use { it.copyTo(out) } }
+                n++
+            } catch (e: Exception) {
+            }
+        }
+        toast(if (n > 0) "$n foto disimpan di Pictures/CatatanCabang" else "Gagal menyimpan foto")
+    }
+
     private fun copyText(what: String, text: String) {
         if (text.isBlank()) return
         val cm = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
@@ -1333,6 +1625,13 @@ class MainActivity : Activity() {
         popupMenu(listOf<Pair<String, () -> Unit>>(
             Pair("Backup semua") { doBackup(true) },
             Pair("Import") { doImport(true) },
+            Pair("Bukti contoh (uji)") {
+                BuktiStore.addSample(this)
+                load()
+                refreshBukti()
+                refreshFolders()
+                toast("Bukti contoh ditambahkan")
+            },
             Pair(if (dark) "Mode Terang" else "Mode Gelap") { toggleTheme() }
         ))
     }
@@ -2218,5 +2517,7 @@ class MainActivity : Activity() {
     private fun load() {
         folders.clear()
         folders.addAll(Store.load(this))
+        orders.clear()
+        orders.addAll(BuktiStore.load(this))
     }
 }

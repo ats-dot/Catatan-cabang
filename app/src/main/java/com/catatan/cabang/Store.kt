@@ -108,6 +108,10 @@ object Store {
         listener?.invoke()
     }
 
+    fun ping() {
+        notifyChanged()
+    }
+
     // ---------- status keterangan ----------
     // 3 = sudah terpakai, 2 = 1000 dm, 1 = VG, 0 = lainnya/kosong
     fun rank(note: String): Int {
