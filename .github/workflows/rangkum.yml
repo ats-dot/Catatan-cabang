@@ -21,27 +21,38 @@ jobs:
       - name: Buat rangkuman otomatis
         run: |
           mkdir -p graphify-out
-          graphify extract . --code-only || true
+          graphify . --no-viz || true
           python3 - << 'EOF'
           import os, re
 
           out_dir = "graphify-out"
           report_path = os.path.join(out_dir, "GRAPH_REPORT.md")
 
-          if not os.path.exists(report_path):
+          if not os.path.exists(report_path) or os.path.getsize(report_path) < 100:
               lines = ["# Peta Struktur & Rangkuman Proyek\n"]
-              skip = {'.git', '.github', 'graphify-out', 'node_modules'}
+              skip = {'.git', '.github', 'graphify-out', 'node_modules', 'build', '.gradle', '.idea'}
+              exts = ('.kt', '.java', '.xml', '.gradle', '.kts', '.html', '.js', '.css', '.py', '.json')
+              
               for root, dirs, files in os.walk("."):
-                  dirs[:] = [d for d in dirs if d not in skip]
+                  dirs[:] = [d for d in sorted(dirs) if d not in skip]
                   for f in sorted(files):
-                      if f.endswith(('.html', '.js', '.css', '.py', '.ts', '.json', '.sh')):
-                          p = os.path.join(root, f)
+                      if f.endswith(exts):
+                          p = os.path.join(root, f).lstrip("./")
                           content = open(p, encoding='utf-8', errors='ignore').read()
-                          funcs = re.findall(r'(?:function\s+([a-zA-Z0-9_]+)|const\s+([a-zA-Z0-9_]+)\s*=\s*(?:async\s*)?\(|def\s+([a-zA-Z0-9_]+)|id=["\']([a-zA-Z0-9_-]+)["\'])', content)
-                          names = sorted(set(next(x for x in tup if x) for tup in funcs if any(tup)))
-                          lines.append(f"## File: `{p}` ({len(content.splitlines())} baris)")
-                          if names:
-                              lines.append("- **Daftar Fungsi / Elemen ID:** " + ", ".join(f"`{n}`" for n in names[:50]))
+                          lines_list = content.splitlines()
+                          lines.append(f"## `{p}` ({len(lines_list)} baris)")
+                          
+                          items = []
+                          for idx, line in enumerate(lines_list, 1):
+                              m = re.search(r'\b(class|interface|object|fun|function|def)\s+([a-zA-Z0-9_]+)', line)
+                              if m:
+                                  items.append(f"- Baris {idx}: `{m.group(1)} {m.group(2)}`")
+                              elif f.endswith('.xml'):
+                                  m_id = re.search(r'android:id="@+id/([a-zA-Z0-9_]+)"', line)
+                                  if m_id:
+                                      items.append(f"- Baris {idx}: ID `@+id/{m_id.group(1)}`")
+                          if items:
+                              lines.extend(items[:80])
                           lines.append("")
               with open(report_path, "w", encoding="utf-8") as out:
                   out.write("\n".join(lines))
