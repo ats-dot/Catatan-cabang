@@ -7,6 +7,7 @@ import android.content.Intent
 // Menerima kiriman dari APK 1 (akun baru) dan APK 3 (update server).
 class Penerima : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
+        SyncEngine.init(context)
         try {
             when (intent.action) {
                 Store.ACTION_AKUN -> {

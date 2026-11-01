@@ -19,7 +19,10 @@ import android.provider.OpenableColumns
 // Juga dipakai untuk membagikan foto ke aplikasi lain (baca).
 class BuktiProvider : ContentProvider() {
 
-    override fun onCreate() = true
+    override fun onCreate(): Boolean {
+        context?.let { SyncEngine.init(it) }
+        return true
+    }
 
     override fun getType(uri: Uri): String = "image/jpeg"
 

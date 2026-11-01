@@ -71,9 +71,13 @@ class Rec(
     var server: String,
     var level: String,
     var note: String
-)
+) {
+    var t: Long = 0L   // waktu perubahan terakhir (untuk sinkron)
+}
 
-class Folder(var name: String, val items: ArrayList<Rec> = ArrayList(), var id: String = "")
+class Folder(var name: String, val items: ArrayList<Rec> = ArrayList(), var id: String = "") {
+    var t: Long = 0L   // waktu perubahan email atau ID (untuk sinkron)
+}
 
 // Ikon gambar sendiri (tanpa file gambar)
 class IconView(
@@ -235,6 +239,7 @@ class MainActivity : Activity() {
         super.onCreate(savedInstanceState)
         prefs = getSharedPreferences("catatan", Context.MODE_PRIVATE)
         dark = prefs.getBoolean("dark", true)
+        SyncEngine.init(applicationContext)
         load()
         showFolders()
     }
@@ -243,10 +248,13 @@ class MainActivity : Activity() {
         super.onResume()
         Store.listener = { runOnUiThread { reloadFromStore() } }
         if (Store.changed) reloadFromStore()
+        SyncEngine.startPeriodic()
+        SyncEngine.syncNow(true, null)
     }
 
     override fun onPause() {
         Store.listener = null
+        SyncEngine.stopPeriodic()
         super.onPause()
     }
 
@@ -1728,8 +1736,70 @@ class MainActivity : Activity() {
         popupMenu(listOf<Pair<String, () -> Unit>>(
             Pair("Backup semua") { doBackup(true) },
             Pair("Import") { doImport(true) },
+            Pair("Sinkron antar HP") { showSync() },
             Pair(if (dark) "Mode Terang" else "Mode Gelap") { toggleTheme() }
         ))
+    }
+
+    // ---------- sinkron antar HP ----------
+    private fun showSync() {
+        val b = box()
+        b.addView(label("Sinkron antar HP", 18f, fg, true))
+        b.addView(label(SyncEngine.statusText(), 12f, sub, false), lp(4))
+        val fUrl = input("Alamat database (https://...)", SyncEngine.url, InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI)
+        val fKey = input("Kunci sinkron", SyncEngine.key, InputType.TYPE_CLASS_TEXT)
+        fUrl.isSingleLine = true
+        fKey.isSingleLine = true
+        b.addView(fUrl, lp(12))
+        b.addView(fKey, lp(8))
+
+        val r1 = LinearLayout(this)
+        r1.orientation = LinearLayout.HORIZONTAL
+        r1.addView(pill("Buat kunci", false) { fKey.setText(SyncEngine.newKey()) })
+        val pc = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+        pc.leftMargin = dp(8)
+        r1.addView(pill("Salin kunci", false) { copyText("Kunci", fKey.text.toString().trim()) }, pc)
+        b.addView(r1, lp(10))
+
+        val row = LinearLayout(this)
+        row.orientation = LinearLayout.HORIZONTAL
+        row.gravity = Gravity.END
+        var d: Dialog? = null
+        if (SyncEngine.on) {
+            row.addView(pill("Matikan", false) {
+                SyncEngine.on = false
+                d?.dismiss()
+                toast("Sinkron dimatikan")
+            })
+        }
+        val pb = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+        pb.leftMargin = dp(8)
+        row.addView(pill("Batal", false) { d?.dismiss() }, pb)
+        val ps = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+        ps.leftMargin = dp(8)
+        row.addView(pill("Simpan", true) {
+            val u = fUrl.text.toString().trim().trimEnd('/')
+            val k = fKey.text.toString().trim()
+            if (!u.startsWith("https://")) {
+                fUrl.error = "Harus diawali https://"
+                return@pill
+            }
+            if (k.length < 16 || !k.all { it.isLetterOrDigit() }) {
+                fKey.error = "Minimal 16 huruf atau angka"
+                return@pill
+            }
+            SyncEngine.url = u
+            SyncEngine.key = k
+            SyncEngine.on = true
+            d?.dismiss()
+            toast("Menyinkronkan...")
+            SyncEngine.syncNow(true) { msg -> toast(msg) }
+        }, ps)
+        b.addView(row, lp(16))
+
+        val sv = ScrollView(this)
+        sv.addView(b)
+        d = showBox(sv)
     }
 
     private fun toggleTheme() {

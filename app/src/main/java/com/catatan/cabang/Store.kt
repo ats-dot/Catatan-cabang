@@ -4,13 +4,14 @@ import android.content.Context
 import org.json.JSONArray
 import org.json.JSONObject
 
-// Penyimpanan bersama: dipakai layar dan penerima data (APK 1 dan APK 3).
+// Penyimpanan bersama: dipakai layar, penerima data (APK 1 dan APK 3), dan sinkron antar HP.
 object Store {
     const val ACTION_AKUN = "com.catatan.cabang.AKUN_BARU"
     const val ACTION_UPDATE = "com.catatan.cabang.UPDATE_SERVER"
 
     private const val PREF = "catatan"
     private const val KEY = "akun_v2"
+    private const val TOMB = "tomb_v1"
     private val lock = Any()
 
     @Volatile var listener: (() -> Unit)? = null
@@ -36,6 +37,7 @@ object Store {
             o.put("server", r.server)
             o.put("level", r.level)
             o.put("keterangan", r.note)
+            o.put("t", r.t)
             arr.put(o)
         }
         return arr
@@ -47,6 +49,7 @@ object Store {
             val o = JSONObject()
             o.put("name", f.name)
             o.put("id", f.id)
+            o.put("t", f.t)
             o.put("items", recsJson(f.items))
             arr.put(o)
         }
@@ -57,14 +60,14 @@ object Store {
         val out = ArrayList<Rec>()
         for (i in 0 until arr.length()) {
             val o = arr.optJSONObject(i) ?: continue
-            out.add(
-                Rec(
-                    pick(o, "email", "Email", "akun"),
-                    pick(o, "server", "Server"),
-                    pick(o, "level", "Level"),
-                    pick(o, "keterangan", "Keterangan", "note", "ket")
-                )
+            val r = Rec(
+                pick(o, "email", "Email", "akun"),
+                pick(o, "server", "Server"),
+                pick(o, "level", "Level"),
+                pick(o, "keterangan", "Keterangan", "note", "ket")
             )
+            r.t = o.optLong("t")
+            out.add(r)
         }
         return out
     }
@@ -73,7 +76,50 @@ object Store {
         val name = o.optString("name", "Folder")
         val f = Folder(name, parseRecs(o.optJSONArray("items") ?: JSONArray()))
         f.id = pick(o, "id", "ID").trim()
+        f.t = o.optLong("t")
         return f
+    }
+
+    // ---------- kunci pencocokan (untuk sinkron) ----------
+    fun fkey(f: Folder): String =
+        if (f.id.isNotBlank()) "i:" + f.id.trim() else "n:" + f.name.trim().lowercase()
+
+    fun rkey(r: Rec): String {
+        val s = r.server.trim()
+        val d = s.filter { it.isDigit() }
+        return if (d.isNotEmpty() && d.length == s.length) d.trimStart('0').ifEmpty { "0" } else s.lowercase()
+    }
+
+    // ---------- batu nisan (penanda yang sudah dihapus) ----------
+    private fun loadTomb(c: Context): HashMap<String, Long> {
+        val out = HashMap<String, Long>()
+        try {
+            val s = prefs(c).getString(TOMB, null)
+            if (s != null) {
+                val o = JSONObject(s)
+                val ks = o.keys()
+                while (ks.hasNext()) {
+                    val k = ks.next()
+                    out[k] = o.optLong(k)
+                }
+            }
+        } catch (e: Exception) {
+        }
+        return out
+    }
+
+    private fun saveTomb(c: Context, t: Map<String, Long>) {
+        val o = JSONObject()
+        for ((k, v) in t) o.put(k, v)
+        prefs(c).edit().putString(TOMB, o.toString()).apply()
+    }
+
+    fun addTomb(c: Context, key: String) {
+        synchronized(lock) {
+            val t = loadTomb(c)
+            t[key] = System.currentTimeMillis()
+            saveTomb(c, t)
+        }
     }
 
     // ---------- simpan / muat ----------
@@ -96,20 +142,176 @@ object Store {
     }
 
     fun save(c: Context, list: List<Folder>) {
-        synchronized(lock) { saveLocked(c, list) }
+        synchronized(lock) { saveLocked(c, list, true) }
+        SyncEngine.init(c)
+        SyncEngine.kick()
     }
 
-    private fun saveLocked(c: Context, list: List<Folder>) {
+    private fun saveLocked(c: Context, list: List<Folder>, stamp: Boolean = true) {
+        if (stamp) stampDiff(c, list)
         prefs(c).edit().putString(KEY, foldersJson(list).toString()).apply()
     }
 
-    private fun notifyChanged() {
-        changed = true
-        listener?.invoke()
+    // Bandingkan dengan isi tersimpan: yang berubah diberi waktu sekarang, yang hilang dicatat sebagai terhapus
+    private fun stampDiff(c: Context, list: List<Folder>) {
+        val prev = loadLocked(c)
+        val now = System.currentTimeMillis()
+        val tomb = loadTomb(c)
+        val prevF = HashMap<String, Folder>()
+        for (f in prev) prevF[fkey(f)] = f
+        val curKeys = HashSet<String>()
+        for (f in list) {
+            val k = fkey(f)
+            curKeys.add(k)
+            val pf = prevF[k]
+            if (pf == null || pf.name != f.name || pf.id != f.id) f.t = now
+            val prevR = HashMap<String, Rec>()
+            pf?.items?.forEach { prevR[rkey(it)] = it }
+            val seen = HashSet<String>()
+            for (r in f.items) {
+                val rk = rkey(r)
+                seen.add(rk)
+                val pr = prevR[rk]
+                if (pr == null || pr.level != r.level || pr.note != r.note) r.t = now
+                tomb.remove("r|" + k + "|" + rk)
+            }
+            if (pf != null) {
+                for (pr in pf.items) {
+                    val rk = rkey(pr)
+                    if (!seen.contains(rk)) tomb["r|" + k + "|" + rk] = now
+                }
+            }
+            tomb.remove("f|" + k)
+        }
+        for (pf in prev) {
+            val k = fkey(pf)
+            if (!curKeys.contains(k)) tomb["f|" + k] = now
+        }
+        saveTomb(c, tomb)
     }
 
+    private fun notifyChanged(kick: Boolean = true) {
+        changed = true
+        listener?.invoke()
+        if (kick) SyncEngine.kick()
+    }
+
+    // Dari penerima data (perubahan lokal): segarkan layar dan jadwalkan sinkron
     fun ping() {
-        notifyChanged()
+        notifyChanged(true)
+    }
+
+    // Dari sinkron (data baru dari HP lain): segarkan layar saja
+    fun refreshUi() {
+        notifyChanged(false)
+    }
+
+    // ---------- gabung dengan data dari HP lain ----------
+    class MergeResult(val localChanged: Boolean, val pushText: String?)
+
+    private fun canon(f: List<Folder>, z: Map<String, Long>, o: List<Order>): String {
+        val root = JSONObject()
+        val fa = JSONArray()
+        for (x in f.sortedBy { fkey(it) }) {
+            val jo = JSONObject()
+            jo.put("name", x.name)
+            jo.put("id", x.id)
+            jo.put("t", x.t)
+            jo.put("items", recsJson(x.items.sortedBy { rkey(it) }))
+            fa.put(jo)
+        }
+        root.put("f", fa)
+        val zo = JSONObject()
+        for (k in z.keys.sorted()) zo.put(k, z[k] ?: 0L)
+        root.put("z", zo)
+        root.put("o", BuktiStore.ordersJson(o.sortedBy { it.key }))
+        return root.toString()
+    }
+
+    private fun mergeFolders(local: List<Folder>, remote: List<Folder>, tomb: Map<String, Long>): ArrayList<Folder> {
+        val lm = LinkedHashMap<String, Folder>()
+        for (f in local) lm[fkey(f)] = f
+        val rm = LinkedHashMap<String, Folder>()
+        for (f in remote) rm[fkey(f)] = f
+        val keys = LinkedHashSet<String>()
+        keys.addAll(lm.keys)
+        keys.addAll(rm.keys)
+        val out = ArrayList<Folder>()
+        for (k in keys) {
+            val a = lm[k]
+            val b = rm[k]
+            val base = if (a != null && b != null) (if (b.t > a.t) b else a) else (a ?: b!!)
+            val f = Folder(base.name, ArrayList(), base.id)
+            f.t = base.t
+            val ra = HashMap<String, Rec>()
+            a?.items?.forEach { ra[rkey(it)] = it }
+            val rb = HashMap<String, Rec>()
+            b?.items?.forEach { rb[rkey(it)] = it }
+            val rks = LinkedHashSet<String>()
+            a?.items?.forEach { rks.add(rkey(it)) }
+            b?.items?.forEach { rks.add(rkey(it)) }
+            val ft = tomb["f|" + k] ?: 0L
+            for (rk in rks) {
+                val x = ra[rk]
+                val y = rb[rk]
+                val pickRec = if (x != null && y != null) (if (y.t > x.t) y else x) else (x ?: y!!)
+                val tt = maxOf(tomb["r|" + k + "|" + rk] ?: 0L, ft)
+                if (tt > 0L && tt >= pickRec.t) continue
+                val nr = Rec(pickRec.email, pickRec.server, pickRec.level, pickRec.note)
+                nr.t = pickRec.t
+                f.items.add(nr)
+            }
+            if (f.items.isEmpty() && ft > 0L && ft >= f.t) continue
+            out.add(f)
+        }
+        return out
+    }
+
+    // remoteText = isi dari database online (atau null kalau masih kosong).
+    // Hasil: apakah data lokal berubah, dan teks gabungan yang perlu ditulis balik ke online (null = tidak perlu)
+    fun mergeAll(c: Context, remoteText: String?): MergeResult = synchronized(lock) {
+        val local = loadLocked(c)
+        val ltomb = loadTomb(c)
+        val rf = ArrayList<Folder>()
+        val rt = HashMap<String, Long>()
+        var ro = ArrayList<Order>()
+        if (!remoteText.isNullOrBlank()) {
+            try {
+                val o = JSONObject(remoteText)
+                val fa = o.optJSONArray("f")
+                if (fa != null) {
+                    for (i in 0 until fa.length()) {
+                        val x = fa.optJSONObject(i) ?: continue
+                        rf.add(folderFrom(x))
+                    }
+                }
+                val z = o.optJSONObject("z")
+                if (z != null) {
+                    val ks = z.keys()
+                    while (ks.hasNext()) {
+                        val k = ks.next()
+                        rt[k] = z.optLong(k)
+                    }
+                }
+                ro = BuktiStore.parseOrders(o.optJSONArray("o") ?: JSONArray())
+            } catch (e: Exception) {
+            }
+        }
+        val tomb = HashMap<String, Long>(ltomb)
+        for ((k, v) in rt) if (v > (tomb[k] ?: 0L)) tomb[k] = v
+        val out = mergeFolders(local, rf, tomb)
+        val lorders = BuktiStore.load(c)
+        val mo = BuktiStore.mergeOrders(lorders, ro, tomb)
+        val changedF = foldersJson(out).toString() != foldersJson(local).toString()
+        val changedT = tomb != ltomb
+        val changedO = BuktiStore.ordersJson(mo).toString() != BuktiStore.ordersJson(lorders).toString()
+        if (changedF) saveLocked(c, out, false)
+        if (changedT) saveTomb(c, tomb)
+        if (changedO) BuktiStore.saveRaw(c, mo)
+        val remoteCanon = canon(rf, rt, ro)
+        val mergedCanon = canon(out, tomb, mo)
+        val push = if (!remoteText.isNullOrBlank() && remoteCanon == mergedCanon) null else mergedCanon
+        MergeResult(changedF || changedT || changedO, push)
     }
 
     // ---------- status keterangan ----------
@@ -155,6 +357,7 @@ object Store {
         val email = emailIn.trim()
         val id = idIn.trim()
         if (email.isEmpty() && id.isEmpty()) return
+        SyncEngine.init(c)
         synchronized(lock) {
             val list = loadLocked(c)
             var f = findFolder(list, id, email)
@@ -172,9 +375,9 @@ object Store {
                     f.items.add(Rec("", s, "1", ""))
                 }
             }
-            saveLocked(c, list)
+            saveLocked(c, list, true)
         }
-        notifyChanged()
+        notifyChanged(true)
     }
 
     // ---------- dari APK 3: update level / keterangan ----------
@@ -182,6 +385,7 @@ object Store {
         val id = idIn.trim()
         val server = serverIn.trim()
         if (id.isEmpty() || server.isEmpty()) return
+        SyncEngine.init(c)
         synchronized(lock) {
             val list = loadLocked(c)
             var f = findFolder(list, id, "")
@@ -198,8 +402,8 @@ object Store {
             if (lv.isNotEmpty() && (r.level.isBlank() || num(lv) > num(r.level))) r.level = lv
             val nt = note.trim()
             if (nt.isNotEmpty() && rank(nt) >= rank(r.note)) r.note = nt
-            saveLocked(c, list)
+            saveLocked(c, list, true)
         }
-        notifyChanged()
+        notifyChanged(true)
     }
 }
