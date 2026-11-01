@@ -1,0 +1,38 @@
+{
+  ".github/workflows/build.yml": {
+    "mtime": 1793509032.6486154,
+    "seen": 1793509038.9225426,
+    "ast_hash": "1c852d35bd9deac09eb0ae065cb9fcb3",
+    "semantic_hash": "1c852d35bd9deac09eb0ae065cb9fcb3"
+  },
+  ".github/workflows/rangkum.yml": {
+    "mtime": 1793509032.6489139,
+    "seen": 1793509038.922548,
+    "ast_hash": "38589b1e9fe673cdce0d74593b78c422",
+    "semantic_hash": "38589b1e9fe673cdce0d74593b78c422"
+  },
+  "app/build.gradle.kts": {
+    "mtime": 1793509032.6489139,
+    "seen": 1793509038.9225504,
+    "ast_hash": "954ff83c517fcf65101fdfcf8c291bf8",
+    "semantic_hash": "954ff83c517fcf65101fdfcf8c291bf8"
+  },
+  "app/src/main/java/com/catatan/cabang/MainActivity.kt": {
+    "mtime": 1793509032.649138,
+    "seen": 1793509038.9225519,
+    "ast_hash": "722e3d7e2fe05d588e8950ffbacca608",
+    "semantic_hash": "722e3d7e2fe05d588e8950ffbacca608"
+  },
+  "build.gradle.kts": {
+    "mtime": 1793509032.6494815,
+    "seen": 1793509038.9225528,
+    "ast_hash": "4adfa0403ebe063e5d5faaf6a7b72e43",
+    "semantic_hash": "4adfa0403ebe063e5d5faaf6a7b72e43"
+  },
+  "settings.gradle.kts": {
+    "mtime": 1793509032.6494815,
+    "seen": 1793509038.9225538,
+    "ast_hash": "7fc144c23ec08b4a58e147cb9ab6bc41",
+    "semantic_hash": "7fc144c23ec08b4a58e147cb9ab6bc41"
+  }
+}
