@@ -4,15 +4,12 @@
       "abs",
       "activity",
       "app_src_main_java_com_catatan_cabang_mainactivity",
-      "app_src_main_java_com_catatan_cabang_mainactivity_iconview",
-      "app_src_main_java_com_catatan_cabang_mainactivity_iconview_ondraw",
       "app_src_main_java_com_catatan_cabang_mainactivity_mainactivity_watcher",
       "app_src_main_java_com_catatan_cabang_mainactivity_mainactivity_watcher_object_textwatcher_l428",
       "app_src_main_java_com_catatan_cabang_mainactivity_mainactivity_watcher_object_textwatcher_l428_aftertextchanged",
       "app_src_main_java_com_catatan_cabang_mainactivity_mainactivity_watcher_object_textwatcher_l428_beforetextchanged",
       "app_src_main_java_com_catatan_cabang_mainactivity_mainactivity_watcher_object_textwatcher_l428_ontextchanged",
       "argbevaluator",
-      "canvas",
       "clipboardmanager",
       "clipdata",
       "color",
@@ -51,43 +48,6 @@
       "windowmanager"
     ],
     "1": [
-      "app_src_main_java_com_catatan_cabang_mainactivity_mainactivity_applysearch",
-      "app_src_main_java_com_catatan_cabang_mainactivity_mainactivity_applywindow",
-      "app_src_main_java_com_catatan_cabang_mainactivity_mainactivity_askaccount",
-      "app_src_main_java_com_catatan_cabang_mainactivity_mainactivity_asktext",
-      "app_src_main_java_com_catatan_cabang_mainactivity_mainactivity_box",
-      "app_src_main_java_com_catatan_cabang_mainactivity_mainactivity_buildfoldersearch",
-      "app_src_main_java_com_catatan_cabang_mainactivity_mainactivity_buildroot",
-      "app_src_main_java_com_catatan_cabang_mainactivity_mainactivity_buildsearch",
-      "app_src_main_java_com_catatan_cabang_mainactivity_mainactivity_buildtop",
-      "app_src_main_java_com_catatan_cabang_mainactivity_mainactivity_bulkedit",
-      "app_src_main_java_com_catatan_cabang_mainactivity_mainactivity_column",
-      "app_src_main_java_com_catatan_cabang_mainactivity_mainactivity_confirmwipe",
-      "app_src_main_java_com_catatan_cabang_mainactivity_mainactivity_dp",
-      "app_src_main_java_com_catatan_cabang_mainactivity_mainactivity_fab",
-      "app_src_main_java_com_catatan_cabang_mainactivity_mainactivity_folderoptions",
-      "app_src_main_java_com_catatan_cabang_mainactivity_mainactivity_iconbtn",
-      "app_src_main_java_com_catatan_cabang_mainactivity_mainactivity_iconlp",
-      "app_src_main_java_com_catatan_cabang_mainactivity_mainactivity_input",
-      "app_src_main_java_com_catatan_cabang_mainactivity_mainactivity_label",
-      "app_src_main_java_com_catatan_cabang_mainactivity_mainactivity_lp",
-      "app_src_main_java_com_catatan_cabang_mainactivity_mainactivity_openform",
-      "app_src_main_java_com_catatan_cabang_mainactivity_mainactivity_pill",
-      "app_src_main_java_com_catatan_cabang_mainactivity_mainactivity_refreshdata",
-      "app_src_main_java_com_catatan_cabang_mainactivity_mainactivity_refreshfolders",
-      "app_src_main_java_com_catatan_cabang_mainactivity_mainactivity_restyle",
-      "app_src_main_java_com_catatan_cabang_mainactivity_mainactivity_save",
-      "app_src_main_java_com_catatan_cabang_mainactivity_mainactivity_shape",
-      "app_src_main_java_com_catatan_cabang_mainactivity_mainactivity_sheet",
-      "app_src_main_java_com_catatan_cabang_mainactivity_mainactivity_showbox",
-      "app_src_main_java_com_catatan_cabang_mainactivity_mainactivity_showdata",
-      "app_src_main_java_com_catatan_cabang_mainactivity_mainactivity_stylelist",
-      "app_src_main_java_com_catatan_cabang_mainactivity_mainactivity_tabbar",
-      "app_src_main_java_com_catatan_cabang_mainactivity_mainactivity_togglesearch",
-      "linearlayout",
-      "textview"
-    ],
-    "2": [
       "app_src_main_java_com_catatan_cabang_mainactivity_mainactivity",
       "app_src_main_java_com_catatan_cabang_mainactivity_mainactivity_bulkdelete",
       "app_src_main_java_com_catatan_cabang_mainactivity_mainactivity_clearall",
@@ -123,6 +83,42 @@
       "bundle",
       "suppress"
     ],
+    "2": [
+      "app_src_main_java_com_catatan_cabang_mainactivity_mainactivity_applysearch",
+      "app_src_main_java_com_catatan_cabang_mainactivity_mainactivity_applywindow",
+      "app_src_main_java_com_catatan_cabang_mainactivity_mainactivity_askaccount",
+      "app_src_main_java_com_catatan_cabang_mainactivity_mainactivity_asktext",
+      "app_src_main_java_com_catatan_cabang_mainactivity_mainactivity_box",
+      "app_src_main_java_com_catatan_cabang_mainactivity_mainactivity_buildfoldersearch",
+      "app_src_main_java_com_catatan_cabang_mainactivity_mainactivity_buildroot",
+      "app_src_main_java_com_catatan_cabang_mainactivity_mainactivity_buildsearch",
+      "app_src_main_java_com_catatan_cabang_mainactivity_mainactivity_buildtop",
+      "app_src_main_java_com_catatan_cabang_mainactivity_mainactivity_bulkedit",
+      "app_src_main_java_com_catatan_cabang_mainactivity_mainactivity_column",
+      "app_src_main_java_com_catatan_cabang_mainactivity_mainactivity_confirmwipe",
+      "app_src_main_java_com_catatan_cabang_mainactivity_mainactivity_dp",
+      "app_src_main_java_com_catatan_cabang_mainactivity_mainactivity_fab",
+      "app_src_main_java_com_catatan_cabang_mainactivity_mainactivity_folderoptions",
+      "app_src_main_java_com_catatan_cabang_mainactivity_mainactivity_iconlp",
+      "app_src_main_java_com_catatan_cabang_mainactivity_mainactivity_input",
+      "app_src_main_java_com_catatan_cabang_mainactivity_mainactivity_label",
+      "app_src_main_java_com_catatan_cabang_mainactivity_mainactivity_lp",
+      "app_src_main_java_com_catatan_cabang_mainactivity_mainactivity_openform",
+      "app_src_main_java_com_catatan_cabang_mainactivity_mainactivity_pill",
+      "app_src_main_java_com_catatan_cabang_mainactivity_mainactivity_refreshdata",
+      "app_src_main_java_com_catatan_cabang_mainactivity_mainactivity_refreshfolders",
+      "app_src_main_java_com_catatan_cabang_mainactivity_mainactivity_restyle",
+      "app_src_main_java_com_catatan_cabang_mainactivity_mainactivity_save",
+      "app_src_main_java_com_catatan_cabang_mainactivity_mainactivity_shape",
+      "app_src_main_java_com_catatan_cabang_mainactivity_mainactivity_sheet",
+      "app_src_main_java_com_catatan_cabang_mainactivity_mainactivity_showbox",
+      "app_src_main_java_com_catatan_cabang_mainactivity_mainactivity_showdata",
+      "app_src_main_java_com_catatan_cabang_mainactivity_mainactivity_stylelist",
+      "app_src_main_java_com_catatan_cabang_mainactivity_mainactivity_tabbar",
+      "app_src_main_java_com_catatan_cabang_mainactivity_mainactivity_togglesearch",
+      "linearlayout",
+      "textview"
+    ],
     "3": [
       "app_src_main_java_com_catatan_cabang_mainactivity_folder",
       "app_src_main_java_com_catatan_cabang_mainactivity_folderholder_bind",
@@ -152,6 +148,33 @@
       "volatile"
     ],
     "4": [
+      "animator",
+      "app_src_main_java_com_catatan_cabang_mainactivity_folderadapter_getview",
+      "app_src_main_java_com_catatan_cabang_mainactivity_folderholder",
+      "app_src_main_java_com_catatan_cabang_mainactivity_gesture",
+      "app_src_main_java_com_catatan_cabang_mainactivity_gesture_attach",
+      "app_src_main_java_com_catatan_cabang_mainactivity_gesture_release",
+      "app_src_main_java_com_catatan_cabang_mainactivity_iconview",
+      "app_src_main_java_com_catatan_cabang_mainactivity_iconview_ondraw",
+      "app_src_main_java_com_catatan_cabang_mainactivity_mainactivity_collapseholder",
+      "app_src_main_java_com_catatan_cabang_mainactivity_mainactivity_enter",
+      "app_src_main_java_com_catatan_cabang_mainactivity_mainactivity_expandholder",
+      "app_src_main_java_com_catatan_cabang_mainactivity_mainactivity_iconbtn",
+      "app_src_main_java_com_catatan_cabang_mainactivity_mainactivity_ioscurve",
+      "app_src_main_java_com_catatan_cabang_mainactivity_mainactivity_onanimdone",
+      "app_src_main_java_com_catatan_cabang_mainactivity_mainactivity_onanimdone_object_animatorlisteneradapter_l554",
+      "app_src_main_java_com_catatan_cabang_mainactivity_mainactivity_onanimdone_object_animatorlisteneradapter_l554_onanimationcancel",
+      "app_src_main_java_com_catatan_cabang_mainactivity_mainactivity_onanimdone_object_animatorlisteneradapter_l554_onanimationend",
+      "app_src_main_java_com_catatan_cabang_mainactivity_mainactivity_pressfx",
+      "app_src_main_java_com_catatan_cabang_mainactivity_rowadapter_getview",
+      "app_src_main_java_com_catatan_cabang_mainactivity_rowholder",
+      "app_src_main_java_com_catatan_cabang_mainactivity_rowholder_bind",
+      "canvas",
+      "context",
+      "view",
+      "viewgroup"
+    ],
+    "5": [
       "app_src_main_java_com_catatan_cabang_mainactivity_homepager",
       "app_src_main_java_com_catatan_cabang_mainactivity_homepager_onintercepttouchevent",
       "app_src_main_java_com_catatan_cabang_mainactivity_homepager_onsizechanged",
@@ -175,7 +198,7 @@
       "motionevent",
       "velocitytracker"
     ],
-    "5": [
+    "6": [
       "github_workflows_build",
       "github_workflows_build_build_runs_on",
       "github_workflows_build_build_steps",
@@ -196,24 +219,6 @@
       "github_workflows_build_with_name",
       "github_workflows_build_with_path"
     ],
-    "6": [
-      "app_src_main_java_com_catatan_cabang_mainactivity_folderadapter",
-      "app_src_main_java_com_catatan_cabang_mainactivity_folderadapter_getcount",
-      "app_src_main_java_com_catatan_cabang_mainactivity_folderadapter_getitem",
-      "app_src_main_java_com_catatan_cabang_mainactivity_folderadapter_getitemid",
-      "app_src_main_java_com_catatan_cabang_mainactivity_folderadapter_getview",
-      "app_src_main_java_com_catatan_cabang_mainactivity_folderholder",
-      "app_src_main_java_com_catatan_cabang_mainactivity_rowadapter",
-      "app_src_main_java_com_catatan_cabang_mainactivity_rowadapter_getcount",
-      "app_src_main_java_com_catatan_cabang_mainactivity_rowadapter_getitem",
-      "app_src_main_java_com_catatan_cabang_mainactivity_rowadapter_getitemid",
-      "app_src_main_java_com_catatan_cabang_mainactivity_rowadapter_getview",
-      "app_src_main_java_com_catatan_cabang_mainactivity_rowholder",
-      "app_src_main_java_com_catatan_cabang_mainactivity_rowholder_bind",
-      "baseadapter",
-      "context",
-      "viewgroup"
-    ],
     "7": [
       "github_workflows_rangkum",
       "github_workflows_rangkum_jobs",
@@ -232,22 +237,6 @@
       "github_workflows_rangkum_steps_uses"
     ],
     "8": [
-      "animator",
-      "app_src_main_java_com_catatan_cabang_mainactivity_gesture",
-      "app_src_main_java_com_catatan_cabang_mainactivity_gesture_attach",
-      "app_src_main_java_com_catatan_cabang_mainactivity_gesture_release",
-      "app_src_main_java_com_catatan_cabang_mainactivity_mainactivity_collapseholder",
-      "app_src_main_java_com_catatan_cabang_mainactivity_mainactivity_enter",
-      "app_src_main_java_com_catatan_cabang_mainactivity_mainactivity_expandholder",
-      "app_src_main_java_com_catatan_cabang_mainactivity_mainactivity_ioscurve",
-      "app_src_main_java_com_catatan_cabang_mainactivity_mainactivity_onanimdone",
-      "app_src_main_java_com_catatan_cabang_mainactivity_mainactivity_onanimdone_object_animatorlisteneradapter_l554",
-      "app_src_main_java_com_catatan_cabang_mainactivity_mainactivity_onanimdone_object_animatorlisteneradapter_l554_onanimationcancel",
-      "app_src_main_java_com_catatan_cabang_mainactivity_mainactivity_onanimdone_object_animatorlisteneradapter_l554_onanimationend",
-      "app_src_main_java_com_catatan_cabang_mainactivity_mainactivity_pressfx",
-      "view"
-    ],
-    "9": [
       "app_src_main_java_com_catatan_cabang_mainactivity_mainactivity_folderfrom",
       "app_src_main_java_com_catatan_cabang_mainactivity_mainactivity_foldersjson",
       "app_src_main_java_com_catatan_cabang_mainactivity_mainactivity_isemptydata",
@@ -259,6 +248,17 @@
       "intent",
       "jsonarray",
       "jsonobject"
+    ],
+    "9": [
+      "app_src_main_java_com_catatan_cabang_mainactivity_folderadapter",
+      "app_src_main_java_com_catatan_cabang_mainactivity_folderadapter_getcount",
+      "app_src_main_java_com_catatan_cabang_mainactivity_folderadapter_getitem",
+      "app_src_main_java_com_catatan_cabang_mainactivity_folderadapter_getitemid",
+      "app_src_main_java_com_catatan_cabang_mainactivity_rowadapter",
+      "app_src_main_java_com_catatan_cabang_mainactivity_rowadapter_getcount",
+      "app_src_main_java_com_catatan_cabang_mainactivity_rowadapter_getitem",
+      "app_src_main_java_com_catatan_cabang_mainactivity_rowadapter_getitemid",
+      "baseadapter"
     ],
     "10": [
       "app_src_main_java_com_catatan_cabang_penerima",
@@ -279,16 +279,16 @@
     ]
   },
   "cohesion": {
-    "0": 0.04343971631205674,
-    "1": 0.22016806722689075,
-    "2": 0.11942959001782531,
+    "0": 0.045454545454545456,
+    "1": 0.11942959001782531,
+    "2": 0.22638146167557932,
     "3": 0.20615384615384616,
-    "4": 0.15584415584415584,
-    "5": 0.10526315789473684,
-    "6": 0.15833333333333333,
+    "4": 0.11666666666666667,
+    "5": 0.15584415584415584,
+    "6": 0.10526315789473684,
     "7": 0.13333333333333333,
-    "8": 0.1978021978021978,
-    "9": 0.23636363636363636,
+    "8": 0.23636363636363636,
+    "9": 0.2222222222222222,
     "10": 0.5333333333333333,
     "11": 1.0,
     "12": 1.0,
@@ -356,18 +356,7 @@
       ],
       "confidence": "EXTRACTED",
       "relation": "inherits",
-      "note": "Bridges community 0 \u2192 community 2"
-    },
-    {
-      "source": "MainActivity",
-      "target": "FrameLayout",
-      "source_files": [
-        "app/src/main/java/com/catatan/cabang/MainActivity.kt",
-        ""
-      ],
-      "confidence": "EXTRACTED",
-      "relation": "references",
-      "note": "Bridges community 4 \u2192 community 2"
+      "note": "Bridges community 0 \u2192 community 1"
     },
     {
       "source": "MainActivity",
@@ -378,18 +367,18 @@
       ],
       "confidence": "EXTRACTED",
       "relation": "references",
-      "note": "Bridges community 1 \u2192 community 2"
+      "note": "Bridges community 2 \u2192 community 1"
     },
     {
-      "source": "IconView",
-      "target": "View",
+      "source": "MainActivity",
+      "target": "FrameLayout",
       "source_files": [
         "app/src/main/java/com/catatan/cabang/MainActivity.kt",
         ""
       ],
       "confidence": "EXTRACTED",
-      "relation": "inherits",
-      "note": "Bridges community 8 \u2192 community 0"
+      "relation": "references",
+      "note": "Bridges community 5 \u2192 community 1"
     },
     {
       "source": "MainActivity",
@@ -400,7 +389,18 @@
       ],
       "confidence": "EXTRACTED",
       "relation": "references",
-      "note": "Bridges community 8 \u2192 community 2"
+      "note": "Bridges community 4 \u2192 community 1"
+    },
+    {
+      "source": "Folder",
+      "target": "Rec",
+      "source_files": [
+        "app/src/main/java/com/catatan/cabang/MainActivity.kt",
+        "app/src/main/java/com/catatan/cabang/MainActivity.kt"
+      ],
+      "confidence": "EXTRACTED",
+      "relation": "references",
+      "note": "Bridges community 8 \u2192 community 3"
     }
   ],
   "tokens": {
