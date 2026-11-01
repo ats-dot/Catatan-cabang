@@ -395,13 +395,13 @@
       "degree": 14
     },
     {
-      "id": "app_src_main_java_com_catatan_cabang_buktiprovider_buktiprovider",
-      "label": "BuktiProvider",
+      "id": "app_src_main_java_com_catatan_cabang_mainactivity_rec",
+      "label": "Rec",
       "degree": 11
     },
     {
-      "id": "app_src_main_java_com_catatan_cabang_mainactivity_rec",
-      "label": "Rec",
+      "id": "app_src_main_java_com_catatan_cabang_buktiprovider_buktiprovider",
+      "label": "BuktiProvider",
       "degree": 11
     },
     {
