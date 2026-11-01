@@ -54,7 +54,7 @@ class Rec(
     var note: String
 )
 
-class Folder(var name: String, val items: ArrayList<Rec> = ArrayList())
+class Folder(var name: String, val items: ArrayList<Rec> = ArrayList(), var id: String = "")
 
 // Ikon gambar sendiri (tanpa file gambar)
 class IconView(
@@ -180,6 +180,39 @@ class MainActivity : Activity() {
         dark = prefs.getBoolean("dark", true)
         load()
         showFolders()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        Store.listener = { runOnUiThread { reloadFromStore() } }
+        if (Store.changed) reloadFromStore()
+    }
+
+    override fun onPause() {
+        Store.listener = null
+        super.onPause()
+    }
+
+    private fun reloadFromStore() {
+        Store.changed = false
+        val wasIn = current
+        val keyId = wasIn?.id ?: ""
+        val keyName = wasIn?.name ?: ""
+        load()
+        selected.clear()
+        if (wasIn != null) {
+            current = folders.firstOrNull {
+                if (keyId.isNotEmpty()) it.id == keyId else (it.id.isEmpty() && it.name == keyName)
+            }
+        }
+        if (wasIn == null) {
+            refreshFolders()
+        } else if (current == null) {
+            showFolders()
+        } else {
+            refreshData()
+            onSelectionChanged()
+        }
     }
 
     @Suppress("DEPRECATION")
@@ -586,8 +619,11 @@ class MainActivity : Activity() {
 
         fun bind(p: Int, f: Folder) {
             pos = p
-            tvName.text = f.name
-            tvSub.text = "${f.items.size} akun · ${sumServer(f.items)} server"
+            tvName.text = if (f.name.isBlank()) "(email belum diisi)" else f.name
+            val siap = f.items.count { Store.rank(it.note) == 2 }
+            val pakai = f.items.count { Store.rank(it.note) == 3 }
+            val idTxt = if (f.id.isBlank()) "ID belum ada" else "ID ${f.id}"
+            tvSub.text = "$idTxt\n${f.items.size} server · $siap siap · $pakai terpakai"
         }
     }
 
@@ -612,6 +648,14 @@ class MainActivity : Activity() {
                 refreshFolders()
             }
         }, lp(14))
+        b.addView(pill("Ubah ID akun", false) {
+            d?.dismiss()
+            askText("ID akun", f.id, "Simpan") { v ->
+                f.id = v.trim()
+                save()
+                refreshFolders()
+            }
+        }, lp(8))
         b.addView(pill("Hapus folder", false) {
             d?.dismiss()
             sheet("Hapus folder?", "\"${f.name}\" dan ${f.items.size} akun di dalamnya akan dihapus.",
@@ -963,9 +1007,9 @@ class MainActivity : Activity() {
         adapterD?.notifyDataSetChanged()
         val searching = active
         statAkun?.text = shown.size.toString()
-        statServer?.text = sumServer(shown).toString()
-        lblAkun?.text = if (searching) "AKUN DICARI" else "AKUN"
-        lblServer?.text = if (searching) "SERVER DICARI" else "SERVER"
+        statServer?.text = shown.count { Store.rank(it.note) == 2 }.toString()
+        lblAkun?.text = if (searching) "SERVER DICARI" else "SERVER"
+        lblServer?.text = if (searching) "SIAP DM DICARI" else "SIAP DM"
         emptyD?.text = if (f.items.isEmpty()) "Belum ada data.\nTekan + Tambah untuk mulai." else "Tidak ada hasil."
     }
 
@@ -1087,9 +1131,9 @@ class MainActivity : Activity() {
                 chk.scaleX = 1f
                 chk.scaleY = 1f
             }
-            tvEmail.text = r.email
+            tvEmail.text = if (r.email.isBlank()) "Server ${r.server}" else r.email
             tvServer.text = r.server
-            tvServer.visibility = if (r.server.isBlank()) View.GONE else View.VISIBLE
+            tvServer.visibility = if (r.server.isBlank() || r.email.isBlank()) View.GONE else View.VISIBLE
             tvNote.text = r.note
             tvNote.visibility = if (r.note.isBlank()) View.GONE else View.VISIBLE
             tvLevel.text = r.level
@@ -1219,11 +1263,11 @@ class MainActivity : Activity() {
         pSave.leftMargin = dp(8)
         row.addView(pill("Simpan", true) {
             val email = fEmail.text.toString().trim()
-            if (email.isEmpty()) {
-                fEmail.error = "Wajib diisi"
+            val server = fServer.text.toString().trim()
+            if (server.isEmpty()) {
+                fServer.error = "Wajib diisi"
                 return@pill
             }
-            val server = fServer.text.toString().trim()
             val level = fLevel.text.toString().trim()
             val note = fNote.text.toString().trim()
             if (rec == null) {
@@ -1503,48 +1547,13 @@ class MainActivity : Activity() {
     }
 
     // ---------- penyimpanan ----------
-    private fun recsJson(list: List<Rec>): JSONArray {
-        val arr = JSONArray()
-        for (r in list) {
-            val o = JSONObject()
-            o.put("email", r.email)
-            o.put("server", r.server)
-            o.put("level", r.level)
-            o.put("keterangan", r.note)
-            arr.put(o)
-        }
-        return arr
-    }
+    private fun recsJson(list: List<Rec>): JSONArray = Store.recsJson(list)
 
-    private fun foldersJson(): JSONArray {
-        val arr = JSONArray()
-        for (f in folders) {
-            val o = JSONObject()
-            o.put("name", f.name)
-            o.put("items", recsJson(f.items))
-            arr.put(o)
-        }
-        return arr
-    }
+    private fun foldersJson(): JSONArray = Store.foldersJson(folders)
 
-    private fun parseRecs(arr: JSONArray): ArrayList<Rec> {
-        val out = ArrayList<Rec>()
-        for (i in 0 until arr.length()) {
-            val o = arr.optJSONObject(i) ?: continue
-            out.add(Rec(
-                pick(o, "email", "Email", "akun"),
-                pick(o, "server", "Server"),
-                pick(o, "level", "Level"),
-                pick(o, "keterangan", "Keterangan", "note", "ket")
-            ))
-        }
-        return out
-    }
+    private fun parseRecs(arr: JSONArray): ArrayList<Rec> = Store.parseRecs(arr)
 
-    private fun folderFrom(o: JSONObject): Folder {
-        val name = o.optString("name", "Folder")
-        return Folder(name, parseRecs(o.optJSONArray("items") ?: JSONArray()))
-    }
+    private fun folderFrom(o: JSONObject): Folder = Store.folderFrom(o)
 
     private fun parseFolders(text: String): List<Folder> {
         val t = text.trim()
@@ -1576,40 +1585,12 @@ class MainActivity : Activity() {
         return out
     }
 
-    private fun pick(o: JSONObject, vararg keys: String): String {
-        for (k in keys) {
-            val v = o.optString(k, "")
-            if (v.isNotEmpty() && v != "null") return v
-        }
-        return ""
-    }
-
     private fun save() {
-        prefs.edit().putString("folders", foldersJson().toString()).apply()
+        Store.save(this, folders)
     }
 
     private fun load() {
         folders.clear()
-        try {
-            val s = prefs.getString("folders", null)
-            if (s != null) {
-                val arr = JSONArray(s)
-                for (i in 0 until arr.length()) {
-                    val o = arr.optJSONObject(i) ?: continue
-                    folders.add(folderFrom(o))
-                }
-                return
-            }
-            // migrasi dari versi lama (data satu daftar) -> folder "Catatan"
-            val old = prefs.getString("data", null)
-            if (old != null) {
-                val recs = parseRecs(JSONArray(old))
-                if (recs.isNotEmpty()) {
-                    folders.add(Folder("Catatan", recs))
-                    save()
-                }
-            }
-        } catch (e: Exception) {
-        }
+        folders.addAll(Store.load(this))
     }
 }
