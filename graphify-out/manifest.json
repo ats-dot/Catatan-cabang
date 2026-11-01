@@ -1,38 +1,50 @@
 {
   ".github/workflows/build.yml": {
-    "mtime": 1793513618.742023,
-    "seen": 1793513626.929287,
+    "mtime": 1793520027.642352,
+    "seen": 1793520032.9841244,
     "ast_hash": "1c852d35bd9deac09eb0ae065cb9fcb3",
     "semantic_hash": "1c852d35bd9deac09eb0ae065cb9fcb3"
   },
   ".github/workflows/rangkum.yml": {
-    "mtime": 1793513618.742361,
-    "seen": 1793513626.929293,
+    "mtime": 1793520027.6436577,
+    "seen": 1793520032.9841306,
     "ast_hash": "91481489d4adbb751216ba63054bf43a",
     "semantic_hash": "91481489d4adbb751216ba63054bf43a"
   },
   "app/build.gradle.kts": {
-    "mtime": 1793513618.742361,
-    "seen": 1793513626.9292955,
+    "mtime": 1793520027.6436577,
+    "seen": 1793520032.9841337,
     "ast_hash": "954ff83c517fcf65101fdfcf8c291bf8",
     "semantic_hash": "954ff83c517fcf65101fdfcf8c291bf8"
   },
   "app/src/main/java/com/catatan/cabang/MainActivity.kt": {
-    "mtime": 1793513618.7425468,
-    "seen": 1793513626.9292974,
-    "ast_hash": "722e3d7e2fe05d588e8950ffbacca608",
-    "semantic_hash": "722e3d7e2fe05d588e8950ffbacca608"
+    "mtime": 1793520027.6438975,
+    "seen": 1793520032.9841352,
+    "ast_hash": "166936f3af43b559c94d0d02e3f37d7e",
+    "semantic_hash": "166936f3af43b559c94d0d02e3f37d7e"
   },
   "build.gradle.kts": {
-    "mtime": 1793513618.742895,
-    "seen": 1793513626.9292989,
+    "mtime": 1793520027.6443107,
+    "seen": 1793520032.9841394,
     "ast_hash": "4adfa0403ebe063e5d5faaf6a7b72e43",
     "semantic_hash": "4adfa0403ebe063e5d5faaf6a7b72e43"
   },
   "settings.gradle.kts": {
-    "mtime": 1793513618.7433212,
-    "seen": 1793513626.9293003,
+    "mtime": 1793520027.6447892,
+    "seen": 1793520032.984141,
     "ast_hash": "7fc144c23ec08b4a58e147cb9ab6bc41",
     "semantic_hash": "7fc144c23ec08b4a58e147cb9ab6bc41"
+  },
+  "app/src/main/java/com/catatan/cabang/Penerima.kt": {
+    "mtime": 1793520027.6441684,
+    "seen": 1793520032.9841368,
+    "ast_hash": "d2f797ccacf788f2fdcbde6818751b8e",
+    "semantic_hash": "d2f797ccacf788f2fdcbde6818751b8e"
+  },
+  "app/src/main/java/com/catatan/cabang/Store.kt": {
+    "mtime": 1793520027.6441684,
+    "seen": 1793520032.9841383,
+    "ast_hash": "80cbba51e0aef8797dbfd92f435ee96b",
+    "semantic_hash": "80cbba51e0aef8797dbfd92f435ee96b"
   }
 }
