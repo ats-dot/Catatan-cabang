@@ -12,7 +12,8 @@ import android.os.ParcelFileDescriptor
 import android.provider.OpenableColumns
 
 // Pintu masuk untuk aplikasi Klaim & Kirim:
-//  - call("order", key, extras)  : buat / perbarui catatan pesanan
+//  - call("order", key, extras)  : buat / perbarui catatan pesanan (bukti kirim)
+//  - call("server", idAkun, extras) : perbarui level / keterangan satu server (server, level, keterangan)
 //  - openFile(.../foto/<key>/before.jpg atau after.jpg, "w") : tulis foto
 // Juga dipakai untuk membagikan foto ke aplikasi lain (baca).
 class BuktiProvider : ContentProvider() {
@@ -69,10 +70,17 @@ class BuktiProvider : ContentProvider() {
     }
 
     override fun call(method: String, arg: String?, extras: Bundle?): Bundle? {
-        if (method != "order") return null
         val ctx = context ?: return null
-        val key = arg ?: return null
-        BuktiStore.upsert(ctx, key, extras)
+        val a = arg ?: return null
+        when (method) {
+            "order" -> BuktiStore.upsert(ctx, a, extras)
+            "server" -> {
+                val ex = extras ?: return null
+                val sv = ex.getString("server") ?: return null
+                Store.upsertFromClaim(ctx, a, sv, ex.getString("level") ?: "", ex.getString("keterangan") ?: "")
+            }
+            else -> return null
+        }
         Store.ping()
         val r = Bundle()
         r.putBoolean("ok", true)
