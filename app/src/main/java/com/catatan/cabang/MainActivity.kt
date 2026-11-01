@@ -1887,7 +1887,12 @@ class MainActivity : Activity() {
         frame.addView(em, FrameLayout.LayoutParams(-1, -1))
         lv.emptyView = em
 
-        val fb = fab("+  Server") { openForm(null) }
+        val fb = fab("+") { openForm(null) }
+        fb.textSize = 26f
+        fb.minWidth = dp(58)
+        fb.minHeight = dp(58)
+        fb.setPadding(0, 0, 0, dp(2))
+        fb.background = shape(fg, 29)
         val fp = FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
         fp.gravity = Gravity.BOTTOM or Gravity.END
         fp.bottomMargin = dp(18)
@@ -2128,7 +2133,7 @@ class MainActivity : Activity() {
         statAkun?.text = shown.size.toString()
         statServer?.text = shown.count { Store.isReady(it) }.toString()
         statPakai?.text = shown.count { Store.rank(it.note) == 3 }.toString()
-        emptyD?.text = if (f.items.isEmpty()) "Belum ada server.\nTekan + Server untuk mulai." else "Tidak ada hasil."
+        emptyD?.text = if (f.items.isEmpty()) "" else "Tidak ada hasil."
     }
 
     // ---------- baris akun ----------
