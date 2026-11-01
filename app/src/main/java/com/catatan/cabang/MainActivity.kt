@@ -827,7 +827,7 @@ class MainActivity : Activity() {
         tb.setPadding(dp(3), dp(3), dp(3), dp(3))
         val th = View(this)
         th.background = shape(fg, 20)
-        tb.addView(th, FrameLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT))
+        tb.addView(th, FrameLayout.LayoutParams(0, 0))
         tabThumb = th
         val row = LinearLayout(this)
         row.orientation = LinearLayout.HORIZONTAL
@@ -848,9 +848,11 @@ class MainActivity : Activity() {
         tb.addView(row, FrameLayout.LayoutParams(-1, -2))
         tb.addOnLayoutChangeListener { _, l, _, r, _, _, _, _, _ ->
             val iw = (r - l - dp(6)) / 2
+            val ih = row.height
             val lpp = th.layoutParams
-            if (lpp.width != iw) {
+            if (lpp.width != iw || lpp.height != ih) {
                 lpp.width = iw
+                lpp.height = ih
                 th.layoutParams = lpp
             }
             tabThumbW = iw.toFloat()
