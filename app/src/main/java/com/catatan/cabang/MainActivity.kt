@@ -1033,7 +1033,7 @@ class MainActivity : Activity() {
         a.start()
     }
 
-    private fun collapseHolder(v: View) {
+    private fun collapseHolder(v: ViewGroup) {
         heightAnim?.cancel()
         val from = v.height
         if (from <= 0) {
