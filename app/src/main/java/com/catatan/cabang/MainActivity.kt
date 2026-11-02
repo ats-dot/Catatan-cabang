@@ -247,6 +247,53 @@ class MainActivity : Activity() {
         else -> ""
     }
 
+    // Urutan alami: angka lebih dulu dari huruf, deretan angka dibandingkan sebagai bilangan (2 sebelum 10), huruf tanpa melihat besar kecil
+    private fun natCmp(a: String, b: String): Int {
+        val x = a.trim().lowercase()
+        val y = b.trim().lowercase()
+        var i = 0
+        var j = 0
+        while (i < x.length && j < y.length) {
+            val cx = x[i]
+            val cy = y[j]
+            if (cx.isDigit() && cy.isDigit()) {
+                var i2 = i
+                while (i2 < x.length && x[i2].isDigit()) i2++
+                var j2 = j
+                while (j2 < y.length && y[j2].isDigit()) j2++
+                val nx = x.substring(i, i2).trimStart('0')
+                val ny = y.substring(j, j2).trimStart('0')
+                if (nx.length != ny.length) return nx.length - ny.length
+                val c = nx.compareTo(ny)
+                if (c != 0) return c
+                i = i2
+                j = j2
+            } else {
+                if (cx != cy) {
+                    if (cx.isDigit() != cy.isDigit()) return if (cx.isDigit()) -1 else 1
+                    return cx.compareTo(cy)
+                }
+                i++
+                j++
+            }
+        }
+        return (x.length - i) - (y.length - j)
+    }
+
+    // Folder urut berdasarkan email (a sampai z); yang emailnya kosong di paling bawah, diurutkan menurut ID
+    private fun sortFolders() {
+        shownF.sortWith { a, b ->
+            val ab = a.name.isBlank()
+            val bb = b.name.isBlank()
+            when {
+                ab && bb -> natCmp(a.id, b.id)
+                ab -> 1
+                bb -> -1
+                else -> natCmp(a.name, b.name)
+            }
+        }
+    }
+
     private fun addDot(sb: SpannableStringBuilder, color: Int, text: String) {
         val st = sb.length
         sb.append("●")
@@ -1424,6 +1471,7 @@ class MainActivity : Activity() {
                     servers += n
                 }
             }
+            sortFolders()
             val tb = SpannableStringBuilder()
             tb.append(servers.toString())
             tb.setSpan(StyleSpan(Typeface.BOLD), 0, tb.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
@@ -1451,6 +1499,7 @@ class MainActivity : Activity() {
             }
             shownF.add(f)
         }
+        sortFolders()
         adapterF?.notifyDataSetChanged()
         updateSummary()
         emptyF?.text = if (folders.isEmpty()) "" else "Tidak ada hasil."
@@ -2687,6 +2736,7 @@ class MainActivity : Activity() {
             }
             shown.add(r)
         }
+        shown.sortWith { a, b -> natCmp(a.server, b.server) }
         adapterD?.notifyDataSetChanged()
         emptyD?.text = if (f.items.isEmpty()) "" else "Tidak ada hasil."
         val cnt = Store.counts(f.items)
