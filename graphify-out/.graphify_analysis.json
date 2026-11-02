@@ -473,8 +473,8 @@
       "degree": 7
     },
     {
-      "id": "app_src_main_java_com_catatan_cabang_mainactivity_homepager",
-      "label": "HomePager",
+      "id": "app_src_main_java_com_catatan_cabang_mainactivity_buktiadapter",
+      "label": "BuktiAdapter",
       "degree": 7
     }
   ],
