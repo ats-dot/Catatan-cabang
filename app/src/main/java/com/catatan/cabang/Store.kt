@@ -330,10 +330,49 @@ object Store {
         }
     }
 
+    // Akun baru dari aplikasi Pembuat Akun: server dicatat level 3, folder diberi keterangan "Akun baru".
+    // Keterangan itu dihapus otomatis begitu level yang dilaporkan hasil klaim lebih dari level awal
+    const val NEW_LEVEL = 3
+    const val NEW_NOTE = "Akun baru"
+
     // Server siap kirim: keterangan "1000 dm" DAN level minimal 15 (diamond 1000 tapi level di bawah 15 belum siap)
     const val READY_LEVEL = 15
 
     fun isReady(r: Rec): Boolean = rank(r.note) == 2 && num(r.level) >= READY_LEVEL
+
+    // ---- status server (dipakai untuk warna, penanda, hitungan, dan pencarian) ----
+    const val ST_SIAP = 1
+    const val ST_TOPUP = 2
+    const val ST_KLAIM = 3
+    const val ST_BIASA = 4
+    const val ST_PAKAI = 5
+    const val ST_BARU = 6
+    const val TOPUP_VG = 500      // VG segini atau lebih = bisa Top Up
+    const val KLAIM_VG_MIN = 370  // VG 370 sampai 499 = tinggal satu kali klaim
+    const val NEW_SERVER_NOTE = "Baru"
+
+    fun status(r: Rec): Int {
+        val k = rank(r.note)
+        if (k == 3) return ST_PAKAI
+        if (isReady(r)) return ST_SIAP
+        if (r.note.trim().equals(NEW_SERVER_NOTE, true)) return ST_BARU
+        if (k == 1) {
+            val v = num(r.note)
+            return when {
+                v >= TOPUP_VG -> ST_TOPUP
+                v >= KLAIM_VG_MIN -> ST_KLAIM
+                else -> ST_BIASA
+            }
+        }
+        return ST_BIASA
+    }
+
+    // indeks 1..6 = jumlah tiap status
+    fun counts(items: List<Rec>): IntArray {
+        val c = IntArray(7)
+        for (r in items) c[status(r)]++
+        return c
+    }
 
     private fun num(s: String): Long = Regex("\\d+").find(s)?.value?.toLongOrNull() ?: 0L
 
@@ -367,6 +406,7 @@ object Store {
             var f = findFolder(list, id, email)
             if (f == null) {
                 f = Folder(email, ArrayList(), id)
+                f.note = NEW_NOTE
                 list.add(f)
             } else {
                 if (f.name.isBlank() && email.isNotEmpty()) f.name = email
@@ -376,7 +416,7 @@ object Store {
                 val s = sv.trim()
                 if (s.isEmpty()) continue
                 if (f.items.none { sameServer(it.server, s) }) {
-                    f.items.add(Rec("", s, "1", ""))
+                    f.items.add(Rec("", s, NEW_LEVEL.toString(), NEW_SERVER_NOTE))
                 }
             }
             saveLocked(c, list, true)
@@ -404,6 +444,8 @@ object Store {
             }
             val lv = level.trim()
             if (lv.isNotEmpty() && (r.level.isBlank() || num(lv) > num(r.level))) r.level = lv
+            // Level sudah berubah dari level akun baru: keterangan "Akun baru" dihapus
+            if (lv.isNotEmpty() && num(lv) > NEW_LEVEL && f.note.trim().equals(NEW_NOTE, true)) f.note = ""
             val nt = note.trim()
             if (nt.isNotEmpty() && rank(nt) >= rank(r.note)) r.note = nt
             saveLocked(c, list, true)

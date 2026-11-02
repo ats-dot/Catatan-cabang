@@ -133,6 +133,21 @@ class IconView(
                 path.moveTo(5f, 12.5f); path.lineTo(10f, 17.5f); path.lineTo(19f, 7f)
                 c.drawPath(path, p)
             }
+            8 -> { // unduh: panah ke bawah masuk ke nampan
+                c.drawLine(12f, 4f, 12f, 15f, p)
+                path.moveTo(7.5f, 10.5f); path.lineTo(12f, 15f); path.lineTo(16.5f, 10.5f)
+                c.drawPath(path, p)
+                path.reset()
+                path.moveTo(4.5f, 15.5f); path.lineTo(4.5f, 19.5f); path.lineTo(19.5f, 19.5f); path.lineTo(19.5f, 15.5f)
+                c.drawPath(path, p)
+            }
+            9 -> { // kirim: tiga titik terhubung
+                c.drawCircle(18f, 5.5f, 2.6f, p)
+                c.drawCircle(6f, 12f, 2.6f, p)
+                c.drawCircle(18f, 18.5f, 2.6f, p)
+                c.drawLine(8.2f, 10.8f, 15.8f, 6.7f, p)
+                c.drawLine(8.2f, 13.2f, 15.8f, 17.3f, p)
+            }
             6 -> { // centang dalam lingkaran
                 p.style = Paint.Style.FILL
                 c.drawCircle(12f, 12f, 11f, p)
@@ -190,7 +205,13 @@ class MainActivity : Activity() {
     private var dark = true
     private var searchOpen = false
     private var searchField = 0          // 0 server, 1 level, 2 keterangan
-    private var statFilter = 0           // 0 semua, 1 siap kirim, 2 terpakai
+    private var statFilter = 0           // 0 semua, atau kode status 1..6 (Siap, Top Up, 1 klaim, Biasa, Terpakai, Baru)
+    private val srvSel = BooleanArray(7) // status yang dipilih di pencarian Server (indeks = kode status)
+    private val matchCounts = HashMap<Folder, IntArray>()
+    private var totalTv: TextView? = null
+    private var srvRow: View? = null
+    private var chipHolder: LinearLayout? = null
+    private var countPill: TextView? = null
     private var topTab = 0               // 0 Akun, 1 Bukti kirim
     private var fOpen = false
     private var fField = 0               // 0 email, 1 ID
@@ -200,6 +221,37 @@ class MainActivity : Activity() {
     private val cGreen = 0xFF7FC8A0.toInt()
     private val cAmber = 0xFFD9B25F.toInt()
     private val cDone = 0xFF8A8A8A.toInt()
+    private val cTop = 0xFF6FA8DC.toInt()
+    private val cKlaim = 0xFFE59A5B.toInt()
+    private val cBaru = 0xFFCFCFCF.toInt()
+    private val stOrder = intArrayOf(1, 2, 3, 4, 5, 6)
+
+    private fun stColor(st: Int): Int = when (st) {
+        Store.ST_SIAP -> cGreen
+        Store.ST_TOPUP -> cTop
+        Store.ST_KLAIM -> cKlaim
+        Store.ST_BIASA -> cAmber
+        Store.ST_PAKAI -> cDone
+        Store.ST_BARU -> cBaru
+        else -> sub
+    }
+
+    private fun stName(st: Int): String = when (st) {
+        Store.ST_SIAP -> "Siap"
+        Store.ST_TOPUP -> "Top Up"
+        Store.ST_KLAIM -> "1 klaim"
+        Store.ST_BIASA -> "Biasa"
+        Store.ST_PAKAI -> "Terpakai"
+        Store.ST_BARU -> "Baru"
+        else -> ""
+    }
+
+    private fun addDot(sb: SpannableStringBuilder, color: Int, text: String) {
+        val st = sb.length
+        sb.append("●")
+        sb.setSpan(ForegroundColorSpan(color), st, sb.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        sb.append(" ").append(text)
+    }
 
     // navigasi ala iPhone
     private var rootFrame: FrameLayout? = null
@@ -1197,9 +1249,9 @@ class MainActivity : Activity() {
             sh.visibility = View.GONE
             return
         }
-        val hints = arrayOf("Cari email", "Cari ID", "Cari keterangan")
+        val hints = arrayOf("Cari email", "Cari ID", "Cari keterangan", "Cari nomor server")
         val et = input(hints[fField], fQuery,
-            if (fField == 1) InputType.TYPE_CLASS_NUMBER else InputType.TYPE_CLASS_TEXT)
+            if (fField == 1 || fField == 3) InputType.TYPE_CLASS_NUMBER else InputType.TYPE_CLASS_TEXT)
         et.isSingleLine = true
         et.background = shape(surface, 14, fg)
         et.addTextChangedListener(watcher {
@@ -1210,17 +1262,42 @@ class MainActivity : Activity() {
         val chips = LinearLayout(this)
         chips.orientation = LinearLayout.HORIZONTAL
         val list = ArrayList<TextView>()
-        val names = arrayOf("Email", "ID", "Keterangan")
-        for (i in 0..2) {
+        val names = arrayOf("Email", "ID", "Keterangan", "Server")
+        // baris pilihan status (hanya saat mode Server) dan total hasil
+        val srv = HorizontalScrollView(this)
+        srv.isHorizontalScrollBarEnabled = false
+        srv.overScrollMode = View.OVER_SCROLL_NEVER
+        val srvLin = LinearLayout(this)
+        srvLin.orientation = LinearLayout.HORIZONTAL
+        srv.addView(srvLin, FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        fun buildSrvChips() {
+            srvLin.removeAllViews()
+            for (st in stOrder) {
+                srvLin.addView(statusChip("● " + stName(st), stColor(st), srvSel[st]) {
+                    srvSel[st] = !srvSel[st]
+                    buildSrvChips()
+                    refreshFolders()
+                })
+            }
+        }
+        buildSrvChips()
+        val tot = TextView(this)
+        tot.textSize = 13f
+        tot.setTextColor(sub)
+        srvRow = srv
+        totalTv = tot
+        for (i in 0..3) {
             val c = pill(names[i], i == fField) {}
             c.setPadding(dp(14), dp(8), dp(14), dp(8))
             c.setOnClickListener {
                 fField = i
                 for (j in list.indices) restyle(list[j], j == i)
-                et.inputType = if (i == 1) InputType.TYPE_CLASS_NUMBER else InputType.TYPE_CLASS_TEXT
+                et.inputType = if (i == 1 || i == 3) InputType.TYPE_CLASS_NUMBER else InputType.TYPE_CLASS_TEXT
                 et.hint = hints[i]
                 et.setText("")
                 fQuery = ""
+                srv.visibility = if (i == 3) View.VISIBLE else View.GONE
+                tot.visibility = if (i == 3) View.VISIBLE else View.GONE
                 refreshFolders()
             }
             list.add(c)
@@ -1229,6 +1306,10 @@ class MainActivity : Activity() {
             chips.addView(c, cp)
         }
         sh.addView(chips, lp(10))
+        sh.addView(srv, lp(0))
+        sh.addView(tot, lp(8))
+        srv.visibility = if (fField == 3) View.VISIBLE else View.GONE
+        tot.visibility = if (fField == 3) View.VISIBLE else View.GONE
         expandHolder(sh)
         if (focus) {
             et.requestFocus()
@@ -1271,17 +1352,13 @@ class MainActivity : Activity() {
         val t1 = sumLine ?: return
         val t2 = sumLegend ?: return
         val bar = sumBar ?: return
+        val total = IntArray(7)
         var servers = 0
-        var siap = 0
-        var pakai = 0
         for (f in folders) {
-            for (r in f.items) {
-                servers++
-                val k = Store.rank(r.note)
-                if (Store.isReady(r)) siap++ else if (k == 3) pakai++
-            }
+            val c = Store.counts(f.items)
+            for (st in stOrder) total[st] += c[st]
+            servers += f.items.size
         }
-        val belum = servers - siap - pakai
         val a = SpannableStringBuilder()
         fun num(n: Int) {
             val st = a.length
@@ -1295,17 +1372,12 @@ class MainActivity : Activity() {
         a.append(" akun")
         t1.text = a
         val l = SpannableStringBuilder()
-        fun dot(color: Int, n: Int) {
-            val st = l.length
-            l.append("●")
-            l.setSpan(ForegroundColorSpan(color), st, l.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-            l.append(" " + n)
+        for (st in stOrder) {
+            if (total[st] > 0) {
+                if (l.isNotEmpty()) l.append("   ")
+                addDot(l, stColor(st), total[st].toString())
+            }
         }
-        dot(cGreen, siap)
-        l.append("   ")
-        dot(cDone, pakai)
-        l.append("   ")
-        dot(0xFF5A5A5A.toInt(), belum)
         t2.text = l
         bar.removeAllViews()
         fun seg(color: Int, n: Int) {
@@ -1319,15 +1391,49 @@ class MainActivity : Activity() {
         if (servers == 0) {
             seg(line, 1)
         } else {
-            seg(cGreen, siap)
-            seg(cDone, pakai)
-            seg(0xFF4A4A4A.toInt(), belum)
+            for (st in stOrder) seg(stColor(st), total[st])
         }
     }
 
     private fun refreshFolders() {
         shownF.clear()
+        matchCounts.clear()
         val q = fQuery.trim()
+        if (fOpen && fField == 3) {
+            // pencarian Server: akun yang punya server cocok, lengkap dengan jumlah server yang cocok
+            val any = (1..6).any { srvSel[it] }
+            var servers = 0
+            for (f in folders) {
+                val cnt = IntArray(7)
+                for (r in f.items) {
+                    val st = Store.status(r)
+                    if (any && !srvSel[st]) continue
+                    if (q.isNotEmpty() && !r.server.contains(q)) continue
+                    cnt[st]++
+                }
+                val n = cnt.sum()
+                if (n > 0) {
+                    matchCounts[f] = cnt
+                    shownF.add(f)
+                    servers += n
+                }
+            }
+            val tb = SpannableStringBuilder()
+            tb.append(servers.toString())
+            tb.setSpan(StyleSpan(Typeface.BOLD), 0, tb.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            tb.setSpan(ForegroundColorSpan(fg), 0, tb.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            tb.append(" server · ")
+            val st2 = tb.length
+            tb.append(shownF.size.toString())
+            tb.setSpan(StyleSpan(Typeface.BOLD), st2, tb.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            tb.setSpan(ForegroundColorSpan(fg), st2, tb.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            tb.append(" akun")
+            totalTv?.text = tb
+            adapterF?.notifyDataSetChanged()
+            updateSummary()
+            emptyF?.text = if (folders.isEmpty()) "" else "Tidak ada hasil."
+            return
+        }
         for (f in folders) {
             if (fOpen && q.isNotEmpty()) {
                 val v = when (fField) {
@@ -1513,10 +1619,10 @@ class MainActivity : Activity() {
 
         val ar = LinearLayout(this)
         ar.orientation = LinearLayout.HORIZONTAL
-        ar.addView(pill("Unduh", true) { downloadOrder(o) })
+        ar.addView(iconPill(8, "Unduh", true) { downloadOrder(o) })
         val pk = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
         pk.leftMargin = dp(8)
-        ar.addView(pill("Kirim", false) { shareOrder(o) }, pk)
+        ar.addView(iconPill(9, "Kirim", false) { shareOrder(o) }, pk)
         col.addView(ar, lp(12))
 
         val sv = ScrollView(this)
@@ -1532,6 +1638,30 @@ class MainActivity : Activity() {
         col.addView(sv, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f).also { it.topMargin = dp(12) })
 
         pushDetail(col, animated)
+    }
+
+    // Tombol berikon + tulisan pendek (Unduh, Kirim)
+    private fun iconPill(kind: Int, text: String, filled: Boolean, onClick: () -> Unit): LinearLayout {
+        val box = LinearLayout(this)
+        box.orientation = LinearLayout.HORIZONTAL
+        box.gravity = Gravity.CENTER
+        box.background = if (filled) shape(fg, 20) else shape(Color.TRANSPARENT, 20, line)
+        box.setPadding(dp(14), dp(10), dp(16), dp(10))
+        val c = if (filled) bg else fg
+        box.addView(IconView(this, kind, c, bg), LinearLayout.LayoutParams(dp(18), dp(18)))
+        val t = TextView(this)
+        t.text = text
+        t.textSize = 13f
+        t.typeface = Typeface.DEFAULT_BOLD
+        t.setTextColor(c)
+        val tp = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+        tp.leftMargin = dp(8)
+        box.addView(t, tp)
+        box.isClickable = true
+        box.setOnClickListener { onClick() }
+        box.contentDescription = text
+        pressFx(box)
+        return box
     }
 
     private fun photoCard(title: String, o: Order, kind: String): LinearLayout {
@@ -2002,22 +2132,27 @@ class MainActivity : Activity() {
                 tvNote.text = f.note
                 noteSv.scrollTo(0, 0)
             }
-            val siap = f.items.count { Store.isReady(it) }
-            val pakai = f.items.count { Store.rank(it.note) == 3 }
             val sb = SpannableStringBuilder()
-            sb.append("${f.items.size} server")
-            if (siap > 0) {
-                sb.append(" · ")
-                val s = sb.length
-                sb.append("$siap siap")
-                sb.setSpan(ForegroundColorSpan(cGreen), s, sb.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            val mc = if (fOpen && fField == 3) matchCounts[f] else null
+            if (mc != null) {
+                var first = true
+                for (st in stOrder) {
+                    if (mc[st] > 0) {
+                        if (!first) sb.append("   ")
+                        first = false
+                        addDot(sb, stColor(st), mc[st].toString() + " " + stName(st))
+                    }
+                }
             } else {
-                sb.append(" · 0 siap")
+                val cnt = Store.counts(f.items)
+                sb.append("${f.items.size} server")
+                for (st in stOrder) {
+                    if (cnt[st] > 0) {
+                        sb.append("   ")
+                        addDot(sb, stColor(st), cnt[st].toString())
+                    }
+                }
             }
-            sb.append(" · ")
-            val s2 = sb.length
-            sb.append("$pakai terpakai")
-            if (pakai > 0) sb.setSpan(ForegroundColorSpan(cDone), s2, sb.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
             tvSub.text = sb
 
             val sameItem = item === f
@@ -2258,51 +2393,15 @@ class MainActivity : Activity() {
         col.addView(sh, lp(6))
         searchHolder = sh
 
-        // strip total (ringkas)
-        val strip = LinearLayout(this)
-        strip.orientation = LinearLayout.HORIZONTAL
-        strip.background = shape(surface, 14, line)
-        strip.setPadding(dp(8), dp(8), dp(8), dp(8))
-        val sa = label("0", 20f, fg, true)
-        val ss = label("0", 20f, cGreen, true)
-        val sp = label("0", 20f, cDone, true)
-        val names3 = arrayOf("SERVER", "SIAP DM", "TERPAKAI")
-        val nums3 = arrayOf(sa, ss, sp)
-        for (i in 0..2) {
-            val cell = LinearLayout(this)
-            cell.orientation = LinearLayout.VERTICAL
-            cell.gravity = Gravity.CENTER
-            val lb = label(names3[i], 10f, sub, true)
-            lb.letterSpacing = 0.1f
-            lb.gravity = Gravity.CENTER
-            nums3[i].gravity = Gravity.CENTER
-            cell.addView(nums3[i])
-            cell.addView(lb)
-            strip.addView(cell, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        }
-        col.addView(strip, lp(8))
-        statAkun = sa
-        statServer = ss
-        statPakai = sp
-
-        val fr = LinearLayout(this)
-        fr.orientation = LinearLayout.HORIZONTAL
-        val fchips = ArrayList<TextView>()
-        val fnames = arrayOf("Semua", "Siap kirim", "Terpakai")
-        for (i in 0..2) {
-            val c = pill(fnames[i], i == statFilter) {}
-            c.setPadding(dp(14), dp(8), dp(14), dp(8))
-            c.setOnClickListener {
-                statFilter = i
-                for (j in fchips.indices) restyle(fchips[j], j == i)
-                refreshData()
-            }
-            fchips.add(c)
-            val cp = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
-            cp.rightMargin = dp(8)
-            fr.addView(c, cp)
-        }
-        col.addView(fr, lp(8))
+        // penyaring status: hanya status yang ada isinya, dibuat ulang di refreshData
+        val chipSv = HorizontalScrollView(this)
+        chipSv.isHorizontalScrollBarEnabled = false
+        chipSv.overScrollMode = View.OVER_SCROLL_NEVER
+        val chipRow = LinearLayout(this)
+        chipRow.orientation = LinearLayout.HORIZONTAL
+        chipSv.addView(chipRow, FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        col.addView(chipSv, lp(8))
+        chipHolder = chipRow
 
         // daftar + tombol
         val frame = FrameLayout(this)
@@ -2326,6 +2425,18 @@ class MainActivity : Activity() {
         fp.gravity = Gravity.BOTTOM or Gravity.END
         fp.bottomMargin = dp(18)
         frame.addView(fb, fp)
+
+        // pil hitungan melayang di kiri bawah (total server dan jumlah tiap status yang ada isinya)
+        val cp = TextView(this)
+        cp.textSize = 13f
+        cp.setTextColor(fg)
+        cp.background = shape(surface, 22, line)
+        cp.setPadding(dp(14), dp(10), dp(14), dp(10))
+        val cpp = FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+        cpp.gravity = Gravity.BOTTOM or Gravity.START
+        cpp.bottomMargin = dp(26)
+        frame.addView(cp, cpp)
+        countPill = cp
 
         // bar Edit / Hapus saat mode pilih
         val ab = LinearLayout(this)
@@ -2418,6 +2529,7 @@ class MainActivity : Activity() {
         if (sel == barOn) return
         barOn = sel
         setShown(fabData, !sel)
+        setShown(countPill, !sel)
         setShown(actBar, sel)
     }
 
@@ -2545,8 +2657,7 @@ class MainActivity : Activity() {
         val active = searchOpen && applied
         shown.clear()
         for (r in f.items) {
-            if (statFilter == 1 && !Store.isReady(r)) continue
-            if (statFilter == 2 && Store.rank(r.note) != 3) continue
+            if (statFilter != 0 && Store.status(r) != statFilter) continue
             if (active) {
                 val v = when (searchField) {
                     0 -> r.server
@@ -2571,11 +2682,59 @@ class MainActivity : Activity() {
             shown.add(r)
         }
         adapterD?.notifyDataSetChanged()
-        val searching = active
-        statAkun?.text = shown.size.toString()
-        statServer?.text = shown.count { Store.isReady(it) }.toString()
-        statPakai?.text = shown.count { Store.rank(it.note) == 3 }.toString()
         emptyD?.text = if (f.items.isEmpty()) "" else "Tidak ada hasil."
+        val cnt = Store.counts(f.items)
+        if (statFilter != 0 && cnt[statFilter] == 0) statFilter = 0
+        rebuildStatusChips(cnt)
+        val pb = SpannableStringBuilder()
+        pb.append(f.items.size.toString())
+        pb.setSpan(StyleSpan(Typeface.BOLD), 0, pb.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        for (st in stOrder) {
+            if (cnt[st] > 0) {
+                pb.append("  ")
+                addDot(pb, stColor(st), cnt[st].toString())
+            }
+        }
+        countPill?.text = pb
+    }
+
+    // Penyaring status di dalam folder: Semua, lalu satu tombol berwarna untuk tiap status yang ada isinya
+    private fun rebuildStatusChips(cnt: IntArray) {
+        val row = chipHolder ?: return
+        row.removeAllViews()
+        row.addView(statusChip("Semua", fg, statFilter == 0) {
+            statFilter = 0
+            refreshData()
+        })
+        for (st in stOrder) {
+            if (cnt[st] == 0) continue
+            row.addView(statusChip("● " + stName(st), stColor(st), statFilter == st) {
+                statFilter = st
+                refreshData()
+            })
+        }
+    }
+
+    private fun statusChip(text: String, color: Int, selected: Boolean, onClick: () -> Unit): TextView {
+        val t = TextView(this)
+        t.text = text
+        t.textSize = 13f
+        t.typeface = Typeface.DEFAULT_BOLD
+        t.gravity = Gravity.CENTER
+        t.setPadding(dp(14), dp(8), dp(14), dp(8))
+        if (selected) {
+            t.setTextColor(color)
+            t.background = shape((color and 0x00FFFFFF) or 0x33000000, 20, color)
+        } else {
+            t.setTextColor(color)
+            t.background = shape(Color.TRANSPARENT, 20, line)
+        }
+        t.setOnClickListener { onClick() }
+        pressFx(t)
+        val lpp = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+        lpp.rightMargin = dp(8)
+        t.layoutParams = lpp
+        return t
     }
 
     // ---------- baris akun ----------
@@ -2608,11 +2767,13 @@ class MainActivity : Activity() {
         private val tvEmail = TextView(ctx)
         private val tvServer = TextView(ctx)
         private val tvNote = TextView(ctx)
+        private val tvTag = TextView(ctx)
         private val tvLevel = TextView(ctx)
         private var pos = 0
 
         init {
             card.orientation = LinearLayout.HORIZONTAL
+            card.gravity = Gravity.CENTER_VERTICAL
             card.setPadding(dp(14), dp(12), dp(14), dp(12))
 
             val left = FrameLayout(ctx)
@@ -2637,6 +2798,12 @@ class MainActivity : Activity() {
             mid.addView(tvServer, lp(2))
             mid.addView(tvNote, lp(2))
             card.addView(mid, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+
+            tvTag.textSize = 12f
+            tvTag.setPadding(dp(9), dp(3), dp(9), dp(3))
+            val lpt = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+            lpt.leftMargin = dp(8)
+            card.addView(tvTag, lpt)
 
             tvLevel.textSize = 12f
             tvLevel.typeface = Typeface.DEFAULT_BOLD
@@ -2699,12 +2866,11 @@ class MainActivity : Activity() {
             tvEmail.text = "Server ${r.server}"
             tvServer.visibility = View.GONE
             tvNote.text = r.note
-            tvNote.setTextColor(when (Store.rank(r.note)) {
-                2 -> if (Store.isReady(r)) cGreen else sub
-                1 -> cAmber
-                3 -> cDone
-                else -> sub
-            })
+            val stt = Store.status(r)
+            tvNote.setTextColor(stColor(stt))
+            tvTag.text = stName(stt)
+            tvTag.setTextColor(stColor(stt))
+            tvTag.background = shape(Color.TRANSPARENT, 12, stColor(stt))
             tvNote.visibility = if (r.note.isBlank()) View.GONE else View.VISIBLE
             tvLevel.text = r.level
             tvLevel.visibility = if (r.level.isBlank()) View.GONE else View.VISIBLE
