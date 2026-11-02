@@ -144,6 +144,32 @@ class IconView(
     }
 }
 
+// Penanda pilihan: cincin, dan titik di tengah saat dipilih (gaya pilihan iOS)
+class RadioView(ctx: Context, private val offColor: Int, private val onColor: Int) : View(ctx) {
+    private val p = Paint(Paint.ANTI_ALIAS_FLAG)
+    var on = false
+        set(v) {
+            field = v
+            invalidate()
+        }
+
+    override fun onDraw(c: Canvas) {
+        val d = resources.displayMetrics.density
+        val w = width.toFloat()
+        val h = height.toFloat()
+        val sw = 2f * d
+        val r = minOf(w, h) / 2f - sw / 2f - 1f
+        p.style = Paint.Style.STROKE
+        p.strokeWidth = sw
+        p.color = if (on) onColor else offColor
+        c.drawCircle(w / 2f, h / 2f, r, p)
+        if (on) {
+            p.style = Paint.Style.FILL
+            c.drawCircle(w / 2f, h / 2f, r * 0.55f, p)
+        }
+    }
+}
+
 class MainActivity : Activity() {
 
     companion object {
@@ -884,9 +910,16 @@ class MainActivity : Activity() {
         hb.orientation = LinearLayout.HORIZONTAL
         hb.background = shape(surface, 28, line)
         hb.setPadding(dp(10), dp(10), dp(10), dp(10))
+        val psal = pill("Salin", true) { copySelectedHome() }
+        psal.textSize = 15f
         val pdel = pill("Hapus", false) { deleteSelectedHome() }
         pdel.textSize = 15f
-        hb.addView(pdel, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        val lsal = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+        lsal.rightMargin = dp(4)
+        val ldel = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+        ldel.leftMargin = dp(4)
+        hb.addView(psal, lsal)
+        hb.addView(pdel, ldel)
         hb.visibility = View.GONE
         val hbp = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
         hbp.gravity = Gravity.BOTTOM
@@ -1357,7 +1390,7 @@ class MainActivity : Activity() {
         private val tvInfo = TextView(ctx)
         private val tvTime = TextView(ctx)
         private val chev = IconView(ctx, 5, sub, bg)
-        private val chk = TextView(ctx)
+        private val chk = RadioView(ctx, sub, fg)
         private var pos = 0
         private var item: Order? = null
         private var lastSel = false
@@ -1387,9 +1420,6 @@ class MainActivity : Activity() {
             mid.addView(tvTime, lp(2))
             card.addView(mid, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
             card.addView(chev, LinearLayout.LayoutParams(dp(20), dp(20)))
-            chk.gravity = Gravity.CENTER
-            chk.textSize = 13f
-            chk.typeface = Typeface.DEFAULT_BOLD
             chk.visibility = View.GONE
             card.addView(chk, LinearLayout.LayoutParams(dp(24), dp(24)))
 
@@ -1422,7 +1452,7 @@ class MainActivity : Activity() {
             chev.visibility = if (sel) View.GONE else View.VISIBLE
             chk.visibility = if (sel) View.VISIBLE else View.GONE
             if (sel) {
-                styleCheck(chk, c)
+                chk.on = c
                 card.background = shape(if (c) selSurface else surface, 18, if (c) sub else line)
                 if (sameItem && (!lastSel || c != lastChk)) pop(chk)
             } else {
@@ -1597,12 +1627,6 @@ class MainActivity : Activity() {
     // =====================================================
     // PILIH BANYAK (daftar akun: geser kanan; daftar bukti kirim: geser kiri)
     // =====================================================
-    private fun styleCheck(c: TextView, on: Boolean) {
-        c.text = if (on) "✓" else ""
-        c.setTextColor(bg)
-        c.background = if (on) shape(fg, 12) else shape(Color.TRANSPARENT, 12, sub, 2)
-    }
-
     private fun pop(v: View) {
         v.animate().cancel()
         v.scaleX = 0.5f
@@ -1696,7 +1720,16 @@ class MainActivity : Activity() {
             val tp = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
             tp.leftMargin = dp(12)
             top.addView(t, tp)
-            top.addView(pill("Pilih semua", false) { toggleAllHome() })
+            if (topTab == 0) {
+                val pu = pill("Terpakai", false) { selectUsedHome() }
+                pu.textSize = 13f
+                top.addView(pu)
+            }
+            val pa = pill("Pilih semua", false) { toggleAllHome() }
+            pa.textSize = 13f
+            val pal = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+            pal.leftMargin = dp(6)
+            top.addView(pa, pal)
         } else {
             selTitle = null
             top.addView(label("Catatan Cabang", 22f, fg, true), LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
@@ -1712,6 +1745,42 @@ class MainActivity : Activity() {
         top.alpha = 0f
         top.translationY = -dp(6).toFloat()
         top.animate().alpha(1f).translationY(0f).setDuration(240).setInterpolator(iosCurve()).start()
+    }
+
+    // Akun terpakai: punya server, dan semua servernya bertanda "Sudah terpakai"
+    private fun isUsedFolder(f: Folder): Boolean = f.items.isNotEmpty() && f.items.all { Store.rank(it.note) == 3 }
+
+    private fun selectUsedHome() {
+        if (topTab != 0) return
+        val used = shownF.filter { isUsedFolder(it) }
+        if (used.isEmpty()) {
+            toast("Belum ada akun yang semua servernya terpakai")
+            return
+        }
+        selF.clear()
+        selF.addAll(used)
+        afterToggle()
+    }
+
+    // Salin yang dipilih: akun = "email<tab>ID", bukti = "ID<tab>nick<tab>jumlah BBC<tab>tanggal" (satu baris tiap item)
+    private fun copySelectedHome() {
+        val sb = StringBuilder()
+        var n = 0
+        if (topTab == 0) {
+            for (f in selF) {
+                if (n > 0) sb.append('\n')
+                sb.append(if (f.name.isBlank()) "(tanpa email)" else f.name).append('\t').append(f.id)
+                n++
+            }
+            copyText("$n akun", sb.toString())
+        } else {
+            for (o in selB) {
+                if (n > 0) sb.append('\n')
+                sb.append(o.id).append('\t').append(o.nick).append('\t').append(o.sent).append('\t').append(fmtTime(o.time))
+                n++
+            }
+            copyText("$n bukti", sb.toString())
+        }
     }
 
     private fun deleteSelectedHome() {
@@ -1836,7 +1905,7 @@ class MainActivity : Activity() {
         private val tvId = TextView(ctx)
         private val tvSub = TextView(ctx)
         private val chev = IconView(ctx, 5, sub, bg)
-        private val chk = TextView(ctx)
+        private val chk = RadioView(ctx, sub, fg)
         private var pos = 0
         private var item: Folder? = null
         private var lastSel = false
@@ -1867,9 +1936,6 @@ class MainActivity : Activity() {
             card.addView(mid, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
 
             card.addView(chev, LinearLayout.LayoutParams(dp(20), dp(20)))
-            chk.gravity = Gravity.CENTER
-            chk.textSize = 13f
-            chk.typeface = Typeface.DEFAULT_BOLD
             chk.visibility = View.GONE
             card.addView(chk, LinearLayout.LayoutParams(dp(24), dp(24)))
 
@@ -1923,7 +1989,7 @@ class MainActivity : Activity() {
             chev.visibility = if (sel) View.GONE else View.VISIBLE
             chk.visibility = if (sel) View.VISIBLE else View.GONE
             if (sel) {
-                styleCheck(chk, c)
+                chk.on = c
                 card.background = shape(if (c) selSurface else surface, 18, if (c) sub else line)
                 if (sameItem && (!lastSel || c != lastChk)) pop(chk)
             } else {
