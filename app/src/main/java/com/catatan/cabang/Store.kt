@@ -356,6 +356,8 @@ object Store {
         if (k == 3) return ST_PAKAI
         if (isReady(r)) return ST_SIAP
         if (r.note.trim().equals(NEW_SERVER_NOTE, true)) return ST_BARU
+        // Data lama: server tanpa keterangan dan level 1 sampai 3 (belum pernah diklaim) juga dianggap Baru
+        if (r.note.isBlank() && num(r.level) in 1L..NEW_LEVEL.toLong()) return ST_BARU
         if (k == 1) {
             val v = num(r.note)
             return when {
