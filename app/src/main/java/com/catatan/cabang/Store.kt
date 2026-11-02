@@ -49,6 +49,7 @@ object Store {
             val o = JSONObject()
             o.put("name", f.name)
             o.put("id", f.id)
+            o.put("note", f.note)
             o.put("t", f.t)
             o.put("items", recsJson(f.items))
             arr.put(o)
@@ -76,6 +77,7 @@ object Store {
         val name = o.optString("name", "Folder")
         val f = Folder(name, parseRecs(o.optJSONArray("items") ?: JSONArray()))
         f.id = pick(o, "id", "ID").trim()
+        f.note = o.optString("note", "")
         f.t = o.optLong("t")
         return f
     }
@@ -164,7 +166,7 @@ object Store {
             val k = fkey(f)
             curKeys.add(k)
             val pf = prevF[k]
-            if (pf == null || pf.name != f.name || pf.id != f.id) f.t = now
+            if (pf == null || pf.name != f.name || pf.id != f.id || pf.note != f.note) f.t = now
             val prevR = HashMap<String, Rec>()
             pf?.items?.forEach { prevR[rkey(it)] = it }
             val seen = HashSet<String>()
@@ -216,6 +218,7 @@ object Store {
             val jo = JSONObject()
             jo.put("name", x.name)
             jo.put("id", x.id)
+            jo.put("note", x.note)
             jo.put("t", x.t)
             jo.put("items", recsJson(x.items.sortedBy { rkey(it) }))
             fa.put(jo)
@@ -243,6 +246,7 @@ object Store {
             val base = if (a != null && b != null) (if (b.t > a.t) b else a) else (a ?: b!!)
             val f = Folder(base.name, ArrayList(), base.id)
             f.t = base.t
+            f.note = base.note
             val ra = HashMap<String, Rec>()
             a?.items?.forEach { ra[rkey(it)] = it }
             val rb = HashMap<String, Rec>()

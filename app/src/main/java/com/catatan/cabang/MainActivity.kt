@@ -35,6 +35,7 @@ import android.text.style.StyleSpan
 import android.text.TextUtils
 import android.text.TextWatcher
 import android.view.Gravity
+import android.view.GestureDetector
 import android.view.HapticFeedbackConstants
 import android.view.MotionEvent
 import android.view.View
@@ -76,7 +77,8 @@ class Rec(
 }
 
 class Folder(var name: String, val items: ArrayList<Rec> = ArrayList(), var id: String = "") {
-    var t: Long = 0L   // waktu perubahan email atau ID (untuk sinkron)
+    var note: String = ""   // keterangan folder
+    var t: Long = 0L   // waktu perubahan email, ID, atau keterangan (untuk sinkron)
 }
 
 // Ikon gambar sendiri (tanpa file gambar)
@@ -1195,7 +1197,8 @@ class MainActivity : Activity() {
             sh.visibility = View.GONE
             return
         }
-        val et = input(if (fField == 0) "Cari email" else "Cari ID", fQuery,
+        val hints = arrayOf("Cari email", "Cari ID", "Cari keterangan")
+        val et = input(hints[fField], fQuery,
             if (fField == 1) InputType.TYPE_CLASS_NUMBER else InputType.TYPE_CLASS_TEXT)
         et.isSingleLine = true
         et.background = shape(surface, 14, fg)
@@ -1207,15 +1210,15 @@ class MainActivity : Activity() {
         val chips = LinearLayout(this)
         chips.orientation = LinearLayout.HORIZONTAL
         val list = ArrayList<TextView>()
-        val names = arrayOf("Email", "ID")
-        for (i in 0..1) {
+        val names = arrayOf("Email", "ID", "Keterangan")
+        for (i in 0..2) {
             val c = pill(names[i], i == fField) {}
             c.setPadding(dp(14), dp(8), dp(14), dp(8))
             c.setOnClickListener {
                 fField = i
                 for (j in list.indices) restyle(list[j], j == i)
                 et.inputType = if (i == 1) InputType.TYPE_CLASS_NUMBER else InputType.TYPE_CLASS_TEXT
-                et.hint = if (i == 0) "Cari email" else "Cari ID"
+                et.hint = hints[i]
                 et.setText("")
                 fQuery = ""
                 refreshFolders()
@@ -1327,7 +1330,11 @@ class MainActivity : Activity() {
         val q = fQuery.trim()
         for (f in folders) {
             if (fOpen && q.isNotEmpty()) {
-                val v = if (fField == 0) f.name else f.id
+                val v = when (fField) {
+                    0 -> f.name
+                    1 -> f.id
+                    else -> f.note
+                }
                 if (!v.contains(q, true)) continue
             }
             shownF.add(f)
@@ -1904,6 +1911,8 @@ class MainActivity : Activity() {
         private val tvName = TextView(ctx)
         private val tvId = TextView(ctx)
         private val tvSub = TextView(ctx)
+        private val noteSv = HorizontalScrollView(ctx)
+        private val tvNote = TextView(ctx)
         private val chev = IconView(ctx, 5, sub, bg)
         private val chk = RadioView(ctx, sub, fg)
         private var pos = 0
@@ -1930,8 +1939,30 @@ class MainActivity : Activity() {
             tvId.setTextColor(sub)
             tvSub.textSize = 12f
             tvSub.setTextColor(sub)
+            tvNote.textSize = 12f
+            tvNote.setTextColor(fg)
+            tvNote.alpha = 0.85f
+            tvNote.isSingleLine = true
+            tvNote.setHorizontallyScrolling(true)
+            noteSv.isHorizontalScrollBarEnabled = false
+            noteSv.isHorizontalFadingEdgeEnabled = true
+            noteSv.setFadingEdgeLength(dp(24))
+            noteSv.overScrollMode = View.OVER_SCROLL_NEVER
+            noteSv.addView(tvNote, FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+            // Keterangan yang panjang bisa digeser; ketukan di baris ini tetap membuka folder
+            val noteTap = GestureDetector(ctx, object : GestureDetector.SimpleOnGestureListener() {
+                override fun onSingleTapUp(e: MotionEvent): Boolean {
+                    shownF.getOrNull(pos)?.let { if (homeSel) toggleHomeF(it) else openFolder(it) }
+                    return true
+                }
+            })
+            noteSv.setOnTouchListener { _, e ->
+                noteTap.onTouchEvent(e)
+                false
+            }
             mid.addView(tvName)
             mid.addView(tvId, lp(2))
+            mid.addView(noteSv, lp(2))
             mid.addView(tvSub, lp(2))
             card.addView(mid, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
 
@@ -1964,6 +1995,13 @@ class MainActivity : Activity() {
                 tvName.setTextColor(fg)
             }
             tvId.text = if (f.id.isBlank()) "ID belum ada" else "ID ${f.id}"
+            if (f.note.isBlank()) {
+                noteSv.visibility = View.GONE
+            } else {
+                noteSv.visibility = View.VISIBLE
+                tvNote.text = f.note
+                noteSv.scrollTo(0, 0)
+            }
             val siap = f.items.count { Store.isReady(it) }
             val pakai = f.items.count { Store.rank(it.note) == 3 }
             val sb = SpannableStringBuilder()
@@ -2030,6 +2068,14 @@ class MainActivity : Activity() {
                 refreshFolders()
             }
         }, lp(8))
+        b.addView(pill("Ubah keterangan", false) {
+            d?.dismiss()
+            askText("Ubah keterangan", f.note, "Simpan", "Keterangan", true) { v ->
+                f.note = v.trim()
+                save()
+                refreshFolders()
+            }
+        }, lp(8))
         b.addView(pill("Hapus folder", false) {
             d?.dismiss()
             sheet("Hapus folder?", "\"${if (f.name.isBlank()) f.id else f.name}\" dan ${f.items.size} server di dalamnya akan dihapus.",
@@ -2047,10 +2093,13 @@ class MainActivity : Activity() {
         b.addView(label("Akun baru", 18f, fg, true))
         val fe = input("Email", "", InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS)
         val fi = input("ID akun", "", InputType.TYPE_CLASS_NUMBER)
+        val fn = input("Keterangan", "", InputType.TYPE_CLASS_TEXT)
         fe.isSingleLine = true
         fi.isSingleLine = true
+        fn.isSingleLine = true
         b.addView(fe, lp(12))
         b.addView(fi, lp(8))
+        b.addView(fn, lp(8))
         val row = LinearLayout(this)
         row.orientation = LinearLayout.HORIZONTAL
         row.gravity = Gravity.END
@@ -2069,7 +2118,9 @@ class MainActivity : Activity() {
                 fi.error = "ID sudah ada"
                 return@pill
             }
-            folders.add(Folder(e, ArrayList(), i))
+            val nf = Folder(e, ArrayList(), i)
+            nf.note = fn.text.toString().trim()
+            folders.add(nf)
             save()
             refreshFolders()
             d?.dismiss()
@@ -2078,7 +2129,7 @@ class MainActivity : Activity() {
         d = showBox(b)
     }
 
-    private fun askText(title: String, initial: String, ok: String, hint: String = "Judul folder", cb: (String) -> Unit) {
+    private fun askText(title: String, initial: String, ok: String, hint: String = "Judul folder", allowEmpty: Boolean = false, cb: (String) -> Unit) {
         val b = box()
         b.addView(label(title, 18f, fg, true))
         val et = input(hint, initial, InputType.TYPE_CLASS_TEXT)
@@ -2093,7 +2144,7 @@ class MainActivity : Activity() {
         p.leftMargin = dp(8)
         row.addView(pill(ok, true) {
             val s = et.text.toString().trim()
-            if (s.isEmpty()) {
+            if (s.isEmpty() && !allowEmpty) {
                 et.error = "Wajib diisi"
                 return@pill
             }
@@ -2198,7 +2249,8 @@ class MainActivity : Activity() {
         val th = LinearLayout(this)
         th.orientation = LinearLayout.HORIZONTAL
         th.gravity = Gravity.CENTER_VERTICAL
-        col.addView(th, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(44)))
+        th.minimumHeight = dp(44)
+        col.addView(th, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         topHolder = th
 
         val sh = LinearLayout(this)
@@ -2340,6 +2392,19 @@ class MainActivity : Activity() {
             ti.setOnClickListener { copyText("ID", f.id) }
             tl.addView(tn)
             tl.addView(ti)
+            if (f.note.isNotBlank()) {
+                val nsv = HorizontalScrollView(this)
+                nsv.isHorizontalScrollBarEnabled = false
+                nsv.isHorizontalFadingEdgeEnabled = true
+                nsv.setFadingEdgeLength(dp(24))
+                nsv.overScrollMode = View.OVER_SCROLL_NEVER
+                val tnote = label(f.note, 12f, fg, false)
+                tnote.alpha = 0.85f
+                tnote.isSingleLine = true
+                tnote.setHorizontallyScrolling(true)
+                nsv.addView(tnote, FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+                tl.addView(nsv)
+            }
             val tp = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
             tp.leftMargin = dp(12)
             th.addView(tl, tp)
