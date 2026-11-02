@@ -192,6 +192,15 @@ class MainActivity : Activity() {
     private var sumLine: TextView? = null
     private var sumLegend: TextView? = null
     private var sumBar: LinearLayout? = null
+
+    // pilih banyak di halaman utama (daftar akun dan daftar bukti kirim)
+    private var homeSel = false
+    private val selF = LinkedHashSet<Folder>()
+    private val selB = LinkedHashSet<Order>()
+    private var homeTop: LinearLayout? = null
+    private var homeBar: LinearLayout? = null
+    private var homeFab: View? = null
+    private var selTitle: TextView? = null
     private val argb = ArgbEvaluator()
 
     // bukti kirim
@@ -260,6 +269,7 @@ class MainActivity : Activity() {
 
     private fun reloadFromStore() {
         Store.changed = false
+        if (homeSel) exitHomeSel()
         val oc = curOrder
         if (oc != null) {
             load()
@@ -292,7 +302,9 @@ class MainActivity : Activity() {
 
     @Suppress("DEPRECATION")
     override fun onBackPressed() {
-        if (selected.isNotEmpty()) {
+        if (homeSel) {
+            exitHomeSel()
+        } else if (selected.isNotEmpty()) {
             selected.clear()
             onSelectionChanged()
         } else if (searchOpen && current != null) {
@@ -384,13 +396,13 @@ class MainActivity : Activity() {
             v.visibility = View.VISIBLE
             v.alpha = 0f
             v.translationY = dp(40).toFloat()
-            v.animate().alpha(1f).translationY(0f).setDuration(220)
-                .setInterpolator(DecelerateInterpolator()).start()
+            v.animate().alpha(1f).translationY(0f).setDuration(320)
+                .setInterpolator(iosCurve()).start()
         } else {
             if (v.visibility != View.VISIBLE) return
             v.animate().cancel()
-            v.animate().alpha(0f).translationY(dp(40).toFloat()).setDuration(160)
-                .withEndAction { v.visibility = View.GONE }.start()
+            v.animate().alpha(0f).translationY(dp(40).toFloat()).setDuration(200)
+                .setInterpolator(iosCurve()).withEndAction { v.visibility = View.GONE }.start()
         }
     }
 
@@ -487,7 +499,8 @@ class MainActivity : Activity() {
         val v: View,
         val onTap: (() -> Unit)?,
         val onLong: (() -> Unit)?,
-        val onSwipe: (() -> Unit)?
+        val onSwipe: (() -> Unit)?,
+        val swipeRight: Boolean = false
     ) {
         private var sx = 0f
         private var sy = 0f
@@ -537,7 +550,7 @@ class MainActivity : Activity() {
                                 cancelled = true
                                 ui.removeCallbacks(longRun)
                                 release()
-                            } else if (onSwipe != null && dx < -slop && abs(dx) > abs(dy)) {
+                            } else if (onSwipe != null && (if (swipeRight) dx else -dx) > slop && abs(dx) > abs(dy)) {
                                 // baris ikut jari ke kiri
                                 if (!dragging) {
                                     dragging = true
@@ -549,8 +562,9 @@ class MainActivity : Activity() {
                                 }
                                 var tx = dx * 0.8f
                                 if (tx < -maxDrag) tx = -maxDrag
+                                if (tx > maxDrag) tx = maxDrag
                                 v.translationX = tx
-                                if (dx < -swipeDist) {
+                                if ((if (swipeRight) dx else -dx) > swipeDist) {
                                     swiped = true
                                     v.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
                                     onSwipe.invoke()
@@ -794,14 +808,14 @@ class MainActivity : Activity() {
         home.setBackgroundColor(bg)
         home.setPadding(dp(16), dp(12), dp(16), 0)
 
+        homeSel = false
+        selF.clear()
+        selB.clear()
         val top = LinearLayout(this)
         top.orientation = LinearLayout.HORIZONTAL
         top.gravity = Gravity.CENTER_VERTICAL
-        top.addView(label("Catatan Cabang", 22f, fg, true), LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        val sb = iconBtn(1, fOpen) { toggleFolderSearch() }
-        searchBtn = sb
-        top.addView(sb, iconLp())
-        top.addView(iconBtn(2, false) { menuFolders() }, iconLp())
+        homeTop = top
+        buildHomeTop()
         home.addView(top, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(44)))
 
         home.addView(tabBar(), lp(10))
@@ -827,6 +841,7 @@ class MainActivity : Activity() {
         body0.addView(em, FrameLayout.LayoutParams(-1, -1))
         lv.emptyView = em
         val fb = fab("+") { askAccount() }
+        homeFab = fb
         fb.textSize = 26f
         fb.minWidth = dp(58)
         fb.minHeight = dp(58)
@@ -863,6 +878,21 @@ class MainActivity : Activity() {
         home.addView(pg, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
 
         root.addView(home, FrameLayout.LayoutParams(-1, -1))
+
+        // bar bawah saat mode pilih banyak
+        val hb = LinearLayout(this)
+        hb.orientation = LinearLayout.HORIZONTAL
+        hb.background = shape(surface, 28, line)
+        hb.setPadding(dp(10), dp(10), dp(10), dp(10))
+        val pdel = pill("Hapus", false) { deleteSelectedHome() }
+        pdel.textSize = 15f
+        hb.addView(pdel, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        hb.visibility = View.GONE
+        val hbp = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+        hbp.gravity = Gravity.BOTTOM
+        hbp.setMargins(dp(16), 0, dp(16), dp(16))
+        root.addView(hb, hbp)
+        homeBar = hb
         val sc = View(this)
         sc.setBackgroundColor(Color.BLACK)
         sc.visibility = View.GONE
@@ -901,7 +931,7 @@ class MainActivity : Activity() {
             t.typeface = Typeface.DEFAULT_BOLD
             t.setTextColor(sub)
             t.setPadding(0, dp(9), 0, dp(9))
-            t.setOnClickListener { goTo(i) }
+            t.setOnClickListener { if (!homeSel) goTo(i) }
             tabLabels.add(t)
             row.addView(t, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         }
@@ -976,6 +1006,7 @@ class MainActivity : Activity() {
         }
 
         override fun onInterceptTouchEvent(e: MotionEvent): Boolean {
+            if (homeSel) return false
             when (e.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
                     x0 = e.x
@@ -1048,7 +1079,7 @@ class MainActivity : Activity() {
     }
 
     private fun toggleFolderSearch() {
-        if (topTab != 0) return
+        if (topTab != 0 || homeSel) return
         if (fOpen) closeFolderSearch() else openFolderSearch()
     }
 
@@ -1321,13 +1352,20 @@ class MainActivity : Activity() {
     private inner class BuktiHolder {
         val ctx: Context = this@MainActivity
         val root = FrameLayout(ctx)
+        private val card = LinearLayout(ctx)
         private val tvName = TextView(ctx)
         private val tvInfo = TextView(ctx)
         private val tvTime = TextView(ctx)
+        private val chev = IconView(ctx, 5, sub, bg)
+        private val chk = TextView(ctx)
         private var pos = 0
+        private var item: Order? = null
+        private var lastSel = false
+        private var lastChk = false
+
+        fun currentItem(): Order? = item
 
         init {
-            val card = LinearLayout(ctx)
             card.orientation = LinearLayout.HORIZONTAL
             card.gravity = Gravity.CENTER_VERTICAL
             card.background = shape(surface, 18, line)
@@ -1348,23 +1386,50 @@ class MainActivity : Activity() {
             mid.addView(tvInfo, lp(2))
             mid.addView(tvTime, lp(2))
             card.addView(mid, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-            card.addView(IconView(ctx, 5, sub, bg), LinearLayout.LayoutParams(dp(20), dp(20)))
+            card.addView(chev, LinearLayout.LayoutParams(dp(20), dp(20)))
+            chk.gravity = Gravity.CENTER
+            chk.textSize = 13f
+            chk.typeface = Typeface.DEFAULT_BOLD
+            chk.visibility = View.GONE
+            card.addView(chk, LinearLayout.LayoutParams(dp(24), dp(24)))
 
             root.setPadding(0, 0, 0, dp(10))
             root.addView(card, FrameLayout.LayoutParams(-1, -2))
 
+            // ketuk: buka bukti (atau pilih saat mode pilih); geser ke KIRI: mulai mode pilih
             Gesture(root,
-                { orders.getOrNull(pos)?.let { showOrder(it, true) } },
-                { orders.getOrNull(pos)?.let { orderOptions(it) } },
-                null).attach()
+                { orders.getOrNull(pos)?.let { if (homeSel) toggleHomeB(it) else showOrder(it, true) } },
+                { orders.getOrNull(pos)?.let { if (!homeSel) orderOptions(it) } },
+                { orders.getOrNull(pos)?.let { enterHomeSelB(it) } },
+                false).attach()
         }
 
         fun bind(p: Int, o: Order) {
             pos = p
+            root.alpha = 1f
+            root.scaleX = 1f
+            root.scaleY = 1f
+            root.translationY = 0f
             tvName.text = orderTitle(o)
             tvInfo.text = orderInfo(o)
             tvInfo.setTextColor(if (o.done) sub else cAmber)
             tvTime.text = fmtTime(o.time)
+
+            val sameItem = item === o
+            item = o
+            val sel = homeSel
+            val c = sel && selB.contains(o)
+            chev.visibility = if (sel) View.GONE else View.VISIBLE
+            chk.visibility = if (sel) View.VISIBLE else View.GONE
+            if (sel) {
+                styleCheck(chk, c)
+                card.background = shape(if (c) selSurface else surface, 18, if (c) sub else line)
+                if (sameItem && (!lastSel || c != lastChk)) pop(chk)
+            } else {
+                card.background = shape(surface, 18, line)
+            }
+            lastSel = sel
+            lastChk = c
         }
     }
 
@@ -1529,6 +1594,213 @@ class MainActivity : Activity() {
         toast(if (n > 0) "$n foto disimpan di Pictures/CatatanCabang" else "Gagal menyimpan foto")
     }
 
+    // =====================================================
+    // PILIH BANYAK (daftar akun: geser kanan; daftar bukti kirim: geser kiri)
+    // =====================================================
+    private fun styleCheck(c: TextView, on: Boolean) {
+        c.text = if (on) "✓" else ""
+        c.setTextColor(bg)
+        c.background = if (on) shape(fg, 12) else shape(Color.TRANSPARENT, 12, sub, 2)
+    }
+
+    private fun pop(v: View) {
+        v.animate().cancel()
+        v.scaleX = 0.5f
+        v.scaleY = 0.5f
+        v.animate().scaleX(1f).scaleY(1f).setDuration(300)
+            .setInterpolator(OvershootInterpolator(3f)).start()
+    }
+
+    private fun homeCount(): Int = if (topTab == 0) selF.size else selB.size
+
+    private fun notifyHome() {
+        adapterF?.notifyDataSetChanged()
+        adapterB?.notifyDataSetChanged()
+    }
+
+    private fun enterHomeSelF(f: Folder) {
+        if (homeSel) return
+        selF.clear()
+        selB.clear()
+        selF.add(f)
+        startHomeSel()
+    }
+
+    private fun enterHomeSelB(o: Order) {
+        if (homeSel) return
+        selF.clear()
+        selB.clear()
+        selB.add(o)
+        startHomeSel()
+    }
+
+    private fun startHomeSel() {
+        homeSel = true
+        buildHomeTop()
+        setShown(homeFab, false)
+        setShown(homeBar, true)
+        notifyHome()
+    }
+
+    private fun exitHomeSel() {
+        if (!homeSel) return
+        homeSel = false
+        selF.clear()
+        selB.clear()
+        buildHomeTop()
+        setShown(homeFab, true)
+        setShown(homeBar, false)
+        notifyHome()
+    }
+
+    private fun toggleHomeF(f: Folder) {
+        if (!selF.remove(f)) selF.add(f)
+        afterToggle()
+    }
+
+    private fun toggleHomeB(o: Order) {
+        if (!selB.remove(o)) selB.add(o)
+        afterToggle()
+    }
+
+    private fun afterToggle() {
+        if (homeCount() == 0) {
+            exitHomeSel()
+            return
+        }
+        selTitle?.text = homeCount().toString() + " dipilih"
+        notifyHome()
+    }
+
+    private fun toggleAllHome() {
+        if (topTab == 0) {
+            var all = shownF.isNotEmpty()
+            for (f in shownF) if (!selF.contains(f)) all = false
+            if (all) selF.clear() else selF.addAll(shownF)
+        } else {
+            var all = orders.isNotEmpty()
+            for (o in orders) if (!selB.contains(o)) all = false
+            if (all) selB.clear() else selB.addAll(orders)
+        }
+        afterToggle()
+    }
+
+    // Baris atas halaman utama: judul dan tombol, atau "N dipilih" saat mode pilih
+    private fun buildHomeTop() {
+        val top = homeTop ?: return
+        top.removeAllViews()
+        if (homeSel) {
+            top.addView(iconBtn(3, false) { exitHomeSel() }, LinearLayout.LayoutParams(dp(40), dp(40)))
+            val t = label(homeCount().toString() + " dipilih", 18f, fg, true)
+            selTitle = t
+            val tp = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+            tp.leftMargin = dp(12)
+            top.addView(t, tp)
+            top.addView(pill("Pilih semua", false) { toggleAllHome() })
+        } else {
+            selTitle = null
+            top.addView(label("Catatan Cabang", 22f, fg, true), LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            val sb = iconBtn(1, fOpen) { toggleFolderSearch() }
+            searchBtn = sb
+            sb.alpha = (1f - pos).coerceIn(0f, 1f)
+            sb.isClickable = pos < 0.5f
+            top.addView(sb, iconLp())
+            top.addView(iconBtn(2, false) { menuFolders() }, iconLp())
+            styleSearchBtn()
+        }
+        top.animate().cancel()
+        top.alpha = 0f
+        top.translationY = -dp(6).toFloat()
+        top.animate().alpha(1f).translationY(0f).setDuration(240).setInterpolator(iosCurve()).start()
+    }
+
+    private fun deleteSelectedHome() {
+        if (topTab == 0) confirmDeleteFolders(ArrayList(selF), false) else confirmDeleteOrders(ArrayList(selB), false)
+    }
+
+    private fun confirmDeleteFolders(list: List<Folder>, all: Boolean) {
+        if (list.isEmpty()) return
+        val sv = list.sumOf { it.items.size }
+        val msg = (if (all) "SEMUA " else "") + list.size + " akun dan " + sv + " server akan dihapus dari HP ini" +
+            (if (SyncEngine.configured()) " dan dari HP lain (sinkron menyala)" else "") +
+            ". Buat Backup dulu kalau perlu."
+        sheet(if (all) "Hapus semua akun?" else "Hapus " + list.size + " akun?", msg, listOf(
+            Triple("Backup dulu", false) { doBackup(true) },
+            Triple("Hapus", true) { performDeleteFolders(list) }
+        ))
+    }
+
+    private fun confirmDeleteOrders(list: List<Order>, all: Boolean) {
+        if (list.isEmpty()) return
+        val msg = (if (all) "SEMUA " else "") + list.size + " bukti kirim beserta fotonya akan dihapus dari HP ini" +
+            (if (SyncEngine.configured()) " dan dari HP lain (sinkron menyala)" else "") + "."
+        sheet(if (all) "Hapus semua bukti?" else "Hapus " + list.size + " bukti?", msg, listOf(
+            Triple("Hapus", true) { performDeleteOrders(list) }
+        ))
+    }
+
+    private fun performDeleteFolders(list: List<Folder>) {
+        val doomed = HashSet<Any>(list)
+        animateRemoval(lvFolders, doomed, { v -> (v.tag as? FolderHolder)?.currentItem() }) {
+            folders.removeAll(list.toSet())
+            save()
+            exitHomeSel()
+            refreshFolders()
+        }
+    }
+
+    private fun performDeleteOrders(list: List<Order>) {
+        val doomed = HashSet<Any>(list)
+        animateRemoval(lvBukti, doomed, { v -> (v.tag as? BuktiHolder)?.currentItem() }) {
+            for (o in list) {
+                BuktiStore.delete(this, o)
+                orders.remove(o)
+            }
+            exitHomeSel()
+            refreshBukti()
+        }
+    }
+
+    // Baris yang dihapus memudar dan mengecil, lalu baris di bawahnya meluncur menutup celah
+    private fun animateRemoval(lv: ListView?, doomed: Set<Any>, itemOf: (View) -> Any?, apply: () -> Unit) {
+        if (lv == null || lv.childCount == 0) {
+            apply()
+            return
+        }
+        var any = false
+        val tops = HashMap<Any, Int>()
+        for (i in 0 until lv.childCount) {
+            val v = lv.getChildAt(i)
+            val k = itemOf(v) ?: continue
+            if (doomed.contains(k)) {
+                any = true
+                v.animate().alpha(0f).scaleX(0.92f).scaleY(0.92f).setDuration(200).setInterpolator(iosCurve()).start()
+            } else {
+                tops[k] = v.top
+            }
+        }
+        ui.postDelayed({
+            apply()
+            lv.viewTreeObserver.addOnPreDrawListener(object : ViewTreeObserver.OnPreDrawListener {
+                override fun onPreDraw(): Boolean {
+                    val o = lv.viewTreeObserver
+                    if (o.isAlive) o.removeOnPreDrawListener(this)
+                    for (i in 0 until lv.childCount) {
+                        val v = lv.getChildAt(i)
+                        val k = itemOf(v) ?: continue
+                        val old = tops[k] ?: continue
+                        val d = old - v.top
+                        if (d != 0) {
+                            v.translationY = d.toFloat()
+                            v.animate().translationY(0f).setDuration(300).setInterpolator(iosCurve()).start()
+                        }
+                    }
+                    return true
+                }
+            })
+        }, if (any) 200L else 0L)
+    }
+
     private fun copyText(what: String, text: String) {
         if (text.isBlank()) return
         val cm = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
@@ -1559,13 +1831,20 @@ class MainActivity : Activity() {
     private inner class FolderHolder {
         val ctx: Context = this@MainActivity
         val root = FrameLayout(ctx)
+        private val card = LinearLayout(ctx)
         private val tvName = TextView(ctx)
         private val tvId = TextView(ctx)
         private val tvSub = TextView(ctx)
+        private val chev = IconView(ctx, 5, sub, bg)
+        private val chk = TextView(ctx)
         private var pos = 0
+        private var item: Folder? = null
+        private var lastSel = false
+        private var lastChk = false
+
+        fun currentItem(): Folder? = item
 
         init {
-            val card = LinearLayout(ctx)
             card.orientation = LinearLayout.HORIZONTAL
             card.gravity = Gravity.CENTER_VERTICAL
             card.background = shape(surface, 18, line)
@@ -1587,19 +1866,30 @@ class MainActivity : Activity() {
             mid.addView(tvSub, lp(2))
             card.addView(mid, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
 
-            card.addView(IconView(ctx, 5, sub, bg), LinearLayout.LayoutParams(dp(20), dp(20)))
+            card.addView(chev, LinearLayout.LayoutParams(dp(20), dp(20)))
+            chk.gravity = Gravity.CENTER
+            chk.textSize = 13f
+            chk.typeface = Typeface.DEFAULT_BOLD
+            chk.visibility = View.GONE
+            card.addView(chk, LinearLayout.LayoutParams(dp(24), dp(24)))
 
             root.setPadding(0, 0, 0, dp(10))
             root.addView(card, FrameLayout.LayoutParams(-1, -2))
 
+            // ketuk: buka folder (atau pilih saat mode pilih); geser ke KANAN: mulai mode pilih
             Gesture(root,
-                { shownF.getOrNull(pos)?.let { openFolder(it) } },
-                { shownF.getOrNull(pos)?.let { folderOptions(it) } },
-                null).attach()
+                { shownF.getOrNull(pos)?.let { if (homeSel) toggleHomeF(it) else openFolder(it) } },
+                { shownF.getOrNull(pos)?.let { if (!homeSel) folderOptions(it) } },
+                { shownF.getOrNull(pos)?.let { enterHomeSelF(it) } },
+                true).attach()
         }
 
         fun bind(p: Int, f: Folder) {
             pos = p
+            root.alpha = 1f
+            root.scaleX = 1f
+            root.scaleY = 1f
+            root.translationY = 0f
             if (f.name.isBlank()) {
                 tvName.text = "Email belum diisi"
                 tvName.setTextColor(cAmber)
@@ -1625,6 +1915,22 @@ class MainActivity : Activity() {
             sb.append("$pakai terpakai")
             if (pakai > 0) sb.setSpan(ForegroundColorSpan(cDone), s2, sb.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
             tvSub.text = sb
+
+            val sameItem = item === f
+            item = f
+            val sel = homeSel
+            val c = sel && selF.contains(f)
+            chev.visibility = if (sel) View.GONE else View.VISIBLE
+            chk.visibility = if (sel) View.VISIBLE else View.GONE
+            if (sel) {
+                styleCheck(chk, c)
+                card.background = shape(if (c) selSurface else surface, 18, if (c) sub else line)
+                if (sameItem && (!lastSel || c != lastChk)) pop(chk)
+            } else {
+                card.background = shape(surface, 18, line)
+            }
+            lastSel = sel
+            lastChk = c
         }
     }
 
@@ -1733,12 +2039,17 @@ class MainActivity : Activity() {
     }
 
     private fun menuFolders() {
-        popupMenu(listOf<Pair<String, () -> Unit>>(
-            Pair("Backup semua") { doBackup(true) },
-            Pair("Import") { doImport(true) },
-            Pair("Sinkron antar HP") { showSync() },
-            Pair(if (dark) "Mode Terang" else "Mode Gelap") { toggleTheme() }
-        ))
+        val l = ArrayList<Pair<String, () -> Unit>>()
+        if (topTab == 0) {
+            l.add(Pair("Hapus semua akun") { confirmDeleteFolders(ArrayList(folders), true) })
+        } else {
+            l.add(Pair("Hapus semua bukti") { confirmDeleteOrders(ArrayList(orders), true) })
+        }
+        l.add(Pair("Backup semua") { doBackup(true) })
+        l.add(Pair("Import") { doImport(true) })
+        l.add(Pair("Sinkron antar HP") { showSync() })
+        l.add(Pair(if (dark) "Mode Terang" else "Mode Gelap") { toggleTheme() })
+        popupMenu(l)
     }
 
     // ---------- sinkron antar HP ----------
