@@ -212,6 +212,7 @@ class MainActivity : Activity() {
     private var srvRow: View? = null
     private var chipHolder: LinearLayout? = null
     private var countPill: TextView? = null
+    private var sumBox: View? = null
     private var topTab = 0               // 0 Akun, 1 Bukti kirim
     private var fOpen = false
     private var fField = 0               // 0 email, 1 ID
@@ -909,7 +910,9 @@ class MainActivity : Activity() {
         val p0 = FrameLayout(this)
         val col0 = LinearLayout(this)
         col0.orientation = LinearLayout.VERTICAL
-        col0.addView(buildSummary(), LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        val sbx = buildSummary()
+        sumBox = sbx
+        col0.addView(sbx, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         val body0 = FrameLayout(this)
         val lv = ListView(this)
         styleList(lv)
@@ -1310,6 +1313,7 @@ class MainActivity : Activity() {
         sh.addView(tot, lp(8))
         srv.visibility = if (fField == 3) View.VISIBLE else View.GONE
         tot.visibility = if (fField == 3) View.VISIBLE else View.GONE
+        sumBox?.visibility = if (fField == 3) View.GONE else View.VISIBLE
         expandHolder(sh)
         if (focus) {
             et.requestFocus()
@@ -1396,6 +1400,8 @@ class MainActivity : Activity() {
     }
 
     private fun refreshFolders() {
+        // ringkasan halaman utama disembunyikan selama pencarian Server terbuka (total hasil sudah ada di atas daftar)
+        sumBox?.visibility = if (fOpen && fField == 3) View.GONE else View.VISIBLE
         shownF.clear()
         matchCounts.clear()
         val q = fQuery.trim()
