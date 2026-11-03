@@ -2146,7 +2146,7 @@ class MainActivity : Activity() {
             d?.dismiss()
             exitHomeSel()
         }, sp)
-        b.addView(row, lp(0))
+        b.addView(row, lp(16))
         d = showBox(b)
     }
 
