@@ -1428,9 +1428,11 @@ class MainActivity : Activity() {
         val t1 = sumLine ?: return
         val t2 = sumLegend ?: return
         val bar = sumBar ?: return
+        // Saat mencari (Email, ID, Keterangan), total dan warna mengikuti akun yang tampil, bukan semua akun
+        val src: List<Folder> = if (fOpen && fQuery.isNotBlank() && fField != 3) shownF else folders
         val total = IntArray(7)
         var servers = 0
-        for (f in folders) {
+        for (f in src) {
             val c = Store.counts(f.items)
             for (st in stOrder) total[st] += c[st]
             servers += f.items.size
@@ -1444,7 +1446,7 @@ class MainActivity : Activity() {
         }
         num(servers)
         a.append(" server · ")
-        num(folders.size)
+        num(src.size)
         a.append(" akun")
         t1.text = a
         val l = SpannableStringBuilder()
