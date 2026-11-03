@@ -133,6 +133,26 @@ class IconView(
                 path.moveTo(5f, 12.5f); path.lineTo(10f, 17.5f); path.lineTo(19f, 7f)
                 c.drawPath(path, p)
             }
+            10 -> { // salin: dua kotak bertumpuk
+                c.drawRoundRect(9f, 9f, 20f, 20f, 2f, 2f, p)
+                path.moveTo(5f, 15f); path.lineTo(5f, 6f); path.quadTo(5f, 4f, 7f, 4f); path.lineTo(15f, 4f)
+                c.drawPath(path, p)
+            }
+            11 -> { // edit: pensil
+                path.moveTo(4f, 20f); path.lineTo(8f, 20f); path.lineTo(19f, 9f); path.lineTo(15f, 5f); path.lineTo(4f, 16f); path.close()
+                c.drawPath(path, p)
+                c.drawLine(13.5f, 6.5f, 17.5f, 10.5f, p)
+            }
+            12 -> { // hapus: tong sampah
+                c.drawLine(4f, 7f, 20f, 7f, p)
+                c.drawLine(10f, 11f, 10f, 17f, p)
+                c.drawLine(14f, 11f, 14f, 17f, p)
+                path.moveTo(6f, 7f); path.lineTo(7f, 19f); path.lineTo(17f, 19f); path.lineTo(18f, 7f)
+                c.drawPath(path, p)
+                path.reset()
+                path.moveTo(9f, 7f); path.lineTo(9f, 4f); path.lineTo(15f, 4f); path.lineTo(15f, 7f)
+                c.drawPath(path, p)
+            }
             8 -> { // unduh: panah ke bawah masuk ke nampan
                 c.drawLine(12f, 4f, 12f, 15f, p)
                 path.moveTo(7.5f, 10.5f); path.lineTo(12f, 15f); path.lineTo(16.5f, 10.5f)
@@ -327,6 +347,7 @@ class MainActivity : Activity() {
     private val selB = LinkedHashSet<Order>()
     private var homeTop: LinearLayout? = null
     private var homeBar: LinearLayout? = null
+    private var homeEditBtn: View? = null
     private var homeFab: View? = null
     private var selTitle: TextView? = null
     private val argb = ArgbEvaluator()
@@ -1014,16 +1035,20 @@ class MainActivity : Activity() {
         hb.orientation = LinearLayout.HORIZONTAL
         hb.background = shape(surface, 28, line)
         hb.setPadding(dp(10), dp(10), dp(10), dp(10))
-        val psal = pill("Salin", true) { copySelectedHome() }
-        psal.textSize = 15f
-        val pdel = pill("Hapus", false) { deleteSelectedHome() }
-        pdel.textSize = 15f
+        val psal = iconPill(10, "Salin", false, 14f) { copySelectedHome() }
+        val pedt = iconPill(11, "Edit", false, 14f) { editSelectedHome() }
+        val pdel = iconPill(12, "Hapus", false, 14f) { deleteSelectedHome() }
         val lsal = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
         lsal.rightMargin = dp(4)
+        val ledt = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+        ledt.leftMargin = dp(4)
+        ledt.rightMargin = dp(4)
         val ldel = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
         ldel.leftMargin = dp(4)
         hb.addView(psal, lsal)
+        hb.addView(pedt, ledt)
         hb.addView(pdel, ldel)
+        homeEditBtn = pedt
         hb.visibility = View.GONE
         val hbp = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
         hbp.gravity = Gravity.BOTTOM
@@ -1696,7 +1721,7 @@ class MainActivity : Activity() {
     }
 
     // Tombol berikon + tulisan pendek (Unduh, Kirim)
-    private fun iconPill(kind: Int, text: String, filled: Boolean, onClick: () -> Unit): LinearLayout {
+    private fun iconPill(kind: Int, text: String, filled: Boolean, size: Float = 13f, onClick: () -> Unit): LinearLayout {
         val box = LinearLayout(this)
         box.orientation = LinearLayout.HORIZONTAL
         box.gravity = Gravity.CENTER
@@ -1706,7 +1731,7 @@ class MainActivity : Activity() {
         box.addView(IconView(this, kind, c, bg), LinearLayout.LayoutParams(dp(18), dp(18)))
         val t = TextView(this)
         t.text = text
-        t.textSize = 13f
+        t.textSize = size
         t.typeface = Typeface.DEFAULT_BOLD
         t.setTextColor(c)
         val tp = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
@@ -1852,6 +1877,7 @@ class MainActivity : Activity() {
 
     private fun startHomeSel() {
         homeSel = true
+        homeEditBtn?.visibility = if (topTab == 0) View.VISIBLE else View.GONE
         buildHomeTop()
         setShown(homeFab, false)
         setShown(homeBar, true)
@@ -1973,6 +1999,108 @@ class MainActivity : Activity() {
             }
             copyText("$n bukti", sb.toString())
         }
+    }
+
+    private fun editSelectedHome() {
+        if (topTab == 0 && selF.isNotEmpty()) editAccounts(ArrayList(selF))
+    }
+
+    // Edit dari mode pilih. Segmen Email, ID, Keterangan lalu satu kolom isian. Beberapa akun terpilih:
+    // Email dan ID redup (tidak bisa dipilih), hanya Keterangan yang diisi sama untuk semua
+    private fun editAccounts(list: List<Folder>) {
+        if (list.isEmpty()) return
+        val multi = list.size > 1
+        val b = box()
+        b.addView(label(if (multi) "Edit ${list.size} akun" else "Edit akun", 18f, fg, true))
+        val cur = if (multi) arrayOf("", "", "") else arrayOf(list[0].name, list[0].id, list[0].note)
+        val names = arrayOf("Email", "ID", "Keterangan")
+        var sel = 2
+        val et = input(names[2], cur[2], InputType.TYPE_CLASS_TEXT)
+        et.isSingleLine = true
+
+        val segBox = LinearLayout(this)
+        segBox.orientation = LinearLayout.HORIZONTAL
+        segBox.background = shape(surface, 24, line)
+        segBox.setPadding(dp(3), dp(3), dp(3), dp(3))
+        val tvs = ArrayList<TextView>()
+        fun styleSeg() {
+            for (i in 0..2) {
+                val t = tvs[i]
+                val on = i == sel
+                t.setTextColor(if (on) bg else sub)
+                t.background = if (on) shape(fg, 20) else null
+                t.alpha = if (multi && i < 2) 0.35f else 1f
+            }
+        }
+        fun pick(i: Int) {
+            if (multi && i < 2) return
+            if (i == sel) return
+            cur[sel] = et.text.toString()
+            sel = i
+            et.hint = names[i]
+            et.inputType = when (i) {
+                0 -> InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS
+                1 -> InputType.TYPE_CLASS_NUMBER
+                else -> InputType.TYPE_CLASS_TEXT
+            }
+            et.isSingleLine = true
+            et.setText(cur[i])
+            et.setSelection(et.text.length)
+            et.error = null
+            styleSeg()
+        }
+        for (i in 0..2) {
+            val t = TextView(this)
+            t.text = names[i]
+            t.textSize = 13f
+            t.typeface = Typeface.DEFAULT_BOLD
+            t.gravity = Gravity.CENTER
+            t.setPadding(0, dp(10), 0, dp(10))
+            t.setOnClickListener { pick(i) }
+            tvs.add(t)
+            segBox.addView(t, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        }
+        styleSeg()
+        b.addView(segBox, lp(12))
+        b.addView(et, lp(10))
+
+        val row = LinearLayout(this)
+        row.orientation = LinearLayout.HORIZONTAL
+        row.gravity = Gravity.END
+        var d: Dialog? = null
+        row.addView(pill("Batal", false) { d?.dismiss() })
+        val sp = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+        sp.leftMargin = dp(8)
+        row.addView(pill("Simpan", true) {
+            cur[sel] = et.text.toString()
+            val e = cur[0].trim()
+            val i = cur[1].trim()
+            val n = cur[2].trim()
+            if (!multi) {
+                val f = list[0]
+                if (e.isEmpty() && i.isEmpty()) {
+                    pick(0)
+                    et.error = "Isi email atau ID"
+                    return@pill
+                }
+                if (i.isNotEmpty() && i != f.id && folders.any { it !== f && it.id == i }) {
+                    pick(1)
+                    et.error = "ID sudah ada"
+                    return@pill
+                }
+                f.name = e
+                f.id = i
+                f.note = n
+            } else {
+                for (f in list) f.note = n
+            }
+            save()
+            refreshFolders()
+            d?.dismiss()
+            exitHomeSel()
+        }, sp)
+        b.addView(row, lp(0))
+        d = showBox(b)
     }
 
     private fun deleteSelectedHome() {
