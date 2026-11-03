@@ -2014,54 +2014,99 @@ class MainActivity : Activity() {
         b.addView(label(if (multi) "Edit ${list.size} akun" else "Edit akun", 18f, fg, true))
         val cur = if (multi) arrayOf("", "", "") else arrayOf(list[0].name, list[0].id, list[0].note)
         val names = arrayOf("Email", "ID", "Keterangan")
-        var sel = 2
+        var sel = 2          // segmen terpilih
+        var owner = 2        // segmen pemilik teks yang sedang tampil di kolom isian
         val et = input(names[2], cur[2], InputType.TYPE_CLASS_TEXT)
         et.isSingleLine = true
 
-        val segBox = LinearLayout(this)
-        segBox.orientation = LinearLayout.HORIZONTAL
-        segBox.background = shape(surface, 24, line)
-        segBox.setPadding(dp(3), dp(3), dp(3), dp(3))
+        // Segmen: satu pil putih meluncur di belakang tiga tulisan
+        val segFrame = FrameLayout(this)
+        segFrame.background = shape(surface, 24, line)
+        segFrame.setPadding(dp(3), dp(3), dp(3), dp(3))
+        val thumb = View(this)
+        thumb.background = shape(fg, 20)
+        segFrame.addView(thumb, FrameLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT))
+        val segRow = LinearLayout(this)
+        segRow.orientation = LinearLayout.HORIZONTAL
+        segFrame.addView(segRow, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         val tvs = ArrayList<TextView>()
-        fun styleSeg() {
-            for (i in 0..2) {
-                val t = tvs[i]
-                val on = i == sel
-                t.setTextColor(if (on) bg else sub)
-                t.background = if (on) shape(fg, 20) else null
-                t.alpha = if (multi && i < 2) 0.35f else 1f
+        var anim = 0
+        segFrame.addOnLayoutChangeListener { _, l, _, r, _, _, _, _, _ ->
+            val w = (r - l - dp(6)) / 3
+            val lpT = thumb.layoutParams
+            if (w > 0 && lpT.width != w) {
+                lpT.width = w
+                thumb.layoutParams = lpT
             }
+            if (anim == 0) thumb.translationX = (sel * w).toFloat()
         }
-        fun pick(i: Int) {
-            if (multi && i < 2) return
-            if (i == sel) return
-            cur[sel] = et.text.toString()
-            sel = i
-            et.hint = names[i]
-            et.inputType = when (i) {
-                0 -> InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS
-                1 -> InputType.TYPE_CLASS_NUMBER
-                else -> InputType.TYPE_CLASS_TEXT
-            }
-            et.isSingleLine = true
-            et.setText(cur[i])
-            et.setSelection(et.text.length)
-            et.error = null
-            styleSeg()
-        }
-        for (i in 0..2) {
+        for (k in 0..2) {
             val t = TextView(this)
-            t.text = names[i]
+            t.text = names[k]
             t.textSize = 13f
             t.typeface = Typeface.DEFAULT_BOLD
             t.gravity = Gravity.CENTER
             t.setPadding(0, dp(10), 0, dp(10))
-            t.setOnClickListener { pick(i) }
+            t.setTextColor(if (k == sel) bg else sub)
+            t.alpha = if (multi && k < 2) 0.35f else 1f
             tvs.add(t)
-            segBox.addView(t, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            segRow.addView(t, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         }
-        styleSeg()
-        b.addView(segBox, lp(12))
+        val ease = iosCurve()
+        val argb = ArgbEvaluator()
+        fun pick(k: Int, after: (() -> Unit)? = null) {
+            if (multi && k < 2) return
+            if (k == sel) {
+                after?.invoke()
+                return
+            }
+            val old = sel
+            val dir = if (k > old) 1 else -1
+            // teks yang sedang tampil disimpan dulu ke pemiliknya
+            cur[owner] = et.text.toString()
+            sel = k
+            val my = ++anim
+            // pil putih meluncur, warna tulisan ikut berubah pelan
+            val segW = thumb.layoutParams.width.toFloat()
+            thumb.animate().cancel()
+            thumb.animate().translationX(k * segW).setDuration(260).setInterpolator(ease).start()
+            val ca = ValueAnimator.ofFloat(0f, 1f)
+            ca.duration = 260
+            ca.interpolator = ease
+            ca.addUpdateListener { v ->
+                val f = v.animatedValue as Float
+                tvs[old].setTextColor(argb.evaluate(f, bg, sub) as Int)
+                tvs[k].setTextColor(argb.evaluate(f, sub, bg) as Int)
+            }
+            ca.addListener(object : AnimatorListenerAdapter() {
+                override fun onAnimationEnd(a: Animator) {
+                    if (anim == my) anim = 0
+                }
+            })
+            ca.start()
+            // isi kolom: teks lama memudar sambil bergeser searah pil, teks baru masuk dari arah yang sama
+            val shift = dp(12).toFloat() * dir
+            et.animate().cancel()
+            et.animate().alpha(0f).translationX(shift).setDuration(110).withEndAction {
+                owner = k
+                et.hint = names[k]
+                et.inputType = when (k) {
+                    0 -> InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS
+                    1 -> InputType.TYPE_CLASS_NUMBER
+                    else -> InputType.TYPE_CLASS_TEXT
+                }
+                et.isSingleLine = true
+                et.setText(cur[k])
+                et.setSelection(et.text.length)
+                et.error = null
+                et.translationX = -shift
+                et.animate().alpha(1f).translationX(0f).setDuration(120).setInterpolator(ease).withEndAction {
+                    after?.invoke()
+                }.start()
+            }.start()
+        }
+        for (k in 0..2) tvs[k].setOnClickListener { pick(k) }
+        b.addView(segFrame, lp(12))
         b.addView(et, lp(10))
 
         val row = LinearLayout(this)
@@ -2072,20 +2117,18 @@ class MainActivity : Activity() {
         val sp = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
         sp.leftMargin = dp(8)
         row.addView(pill("Simpan", true) {
-            cur[sel] = et.text.toString()
+            cur[owner] = et.text.toString()
             val e = cur[0].trim()
             val i = cur[1].trim()
             val n = cur[2].trim()
             if (!multi) {
                 val f = list[0]
                 if (e.isEmpty() && i.isEmpty()) {
-                    pick(0)
-                    et.error = "Isi email atau ID"
+                    pick(0) { et.error = "Isi email atau ID" }
                     return@pill
                 }
                 if (i.isNotEmpty() && i != f.id && folders.any { it !== f && it.id == i }) {
-                    pick(1)
-                    et.error = "ID sudah ada"
+                    pick(1) { et.error = "ID sudah ada" }
                     return@pill
                 }
                 f.name = e
