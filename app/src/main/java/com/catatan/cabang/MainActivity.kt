@@ -2025,17 +2025,21 @@ class MainActivity : Activity() {
         segFrame.setPadding(dp(3), dp(3), dp(3), dp(3))
         val thumb = View(this)
         thumb.background = shape(fg, 20)
-        segFrame.addView(thumb, FrameLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT))
+        segFrame.addView(thumb, FrameLayout.LayoutParams(0, 0))
         val segRow = LinearLayout(this)
         segRow.orientation = LinearLayout.HORIZONTAL
         segFrame.addView(segRow, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         val tvs = ArrayList<TextView>()
         var anim = 0
         segFrame.addOnLayoutChangeListener { _, l, _, r, _, _, _, _, _ ->
+            // Ukuran pil putih diatur eksplisit mengikuti deretan tulisan (View polos dengan match_parent
+            // di dalam wadah wrap_content akan melebar sepenuh dialog)
             val w = (r - l - dp(6)) / 3
+            val h = segRow.height
             val lpT = thumb.layoutParams
-            if (w > 0 && lpT.width != w) {
+            if (w > 0 && h > 0 && (lpT.width != w || lpT.height != h)) {
                 lpT.width = w
+                lpT.height = h
                 thumb.layoutParams = lpT
             }
             if (anim == 0) thumb.translationX = (sel * w).toFloat()
