@@ -125,7 +125,23 @@ object Store {
     }
 
     // ---------- simpan / muat ----------
-    fun load(c: Context): ArrayList<Folder> = synchronized(lock) { loadLocked(c) }
+    fun load(c: Context): ArrayList<Folder> {
+        var merged = false
+        val out = synchronized(lock) {
+            val l = loadLocked(c)
+            // Duplikat lama (ID salah baca dari APK 1 dan folder klaim) ikut digabung kalau syaratnya terpenuhi
+            if (mergeLikeAccounts(l)) {
+                saveLocked(c, l, true)
+                merged = true
+            }
+            l
+        }
+        if (merged) {
+            SyncEngine.init(c)
+            SyncEngine.kick()
+        }
+        return out
+    }
 
     private fun loadLocked(c: Context): ArrayList<Folder> {
         val out = ArrayList<Folder>()
@@ -421,6 +437,7 @@ object Store {
                     f.items.add(Rec("", s, NEW_LEVEL.toString(), NEW_SERVER_NOTE))
                 }
             }
+            mergeLikeAccounts(list)
             saveLocked(c, list, true)
         }
         notifyChanged(true)
@@ -441,6 +458,49 @@ object Store {
         }
     }
 
+    private fun srvKey(s: String): String {
+        val n = num(s.trim())
+        return if (n > 0L) n.toString() else s.trim()
+    }
+
+    private fun srvSet(f: Folder): Set<String> = f.items.map { srvKey(it.server) }.filter { it.isNotEmpty() }.toSet()
+
+    // Semua server masih belum tersentuh klaim: tanda "Baru" dan level akun baru
+    private fun untouched(f: Folder): Boolean =
+        f.items.isNotEmpty() && f.items.all { it.note.trim().equals(NEW_SERVER_NOTE, true) && num(it.level) <= NEW_LEVEL }
+
+    // a = folder dari APK 1 (ID mungkin salah baca satu angka), b = folder yang dibuat klaim dengan ID dari game.
+    // Syarat: a masih "Akun baru" dan belum tersentuh, b SUDAH tersentuh klaim, ID beda satu angka, email b kosong atau sama
+    // dengan a, dan kumpulan server keduanya sama persis
+    private fun likeAccount(a: Folder, b: Folder): Boolean =
+        a !== b && a.note.trim().equals(NEW_NOTE, true) && untouched(a) && !untouched(b) &&
+            a.id.isNotEmpty() && b.id.isNotEmpty() && oneEdit(a.id, b.id) &&
+            (b.name.isBlank() || b.name.trim().equals(a.name.trim(), true)) &&
+            srvSet(a).isNotEmpty() && srvSet(a) == srvSet(b)
+
+    // Gabungkan folder a ke pasangannya b: b tetap (ID benar, data klaim), emailnya diambil dari a kalau kosong, a dihapus.
+    // Hanya kalau pasangannya tepat satu di kedua arah. Hasil: true kalau ada yang digabung
+    private fun mergeLikeAccounts(list: ArrayList<Folder>): Boolean {
+        var changed = false
+        var guard = 0
+        var again = true
+        while (again && guard++ < 50) {
+            again = false
+            for (a in list.toList()) {
+                val bs = list.filter { likeAccount(a, it) }
+                if (bs.size != 1) continue
+                val b = bs[0]
+                if (list.count { likeAccount(it, b) } != 1) continue
+                if (b.name.isBlank()) b.name = a.name
+                list.remove(a)
+                changed = true
+                again = true
+                break
+            }
+        }
+        return changed
+    }
+
     // ---------- dari APK 3: update level / keterangan ----------
     fun upsertFromClaim(c: Context, idIn: String, serverIn: String, level: String, note: String) {
         val id = idIn.trim()
@@ -450,15 +510,6 @@ object Store {
         synchronized(lock) {
             val list = loadLocked(c)
             var f = findFolder(list, id, "")
-            if (f == null) {
-                // ID dari game (benar) tidak ada. Mungkin folder dari APK 1 yang ID-nya salah baca satu angka: hanya folder yang
-                // masih "Akun baru" dan hanya kalau cocoknya tepat satu. ID folder dikoreksi, emailnya tetap
-                val cand = list.filter { it.note.trim().equals(NEW_NOTE, true) && it.id.isNotEmpty() && oneEdit(it.id, id) }
-                if (cand.size == 1) {
-                    f = cand[0]
-                    f.id = id
-                }
-            }
             if (f == null) {
                 f = Folder("", ArrayList(), id)
                 list.add(f)
@@ -474,6 +525,8 @@ object Store {
             if (lv.isNotEmpty() && num(lv) > NEW_LEVEL && f.note.trim().equals(NEW_NOTE, true)) f.note = ""
             val nt = note.trim()
             if (nt.isNotEmpty() && rank(nt) >= rank(r.note)) r.note = nt
+            // Selama sesi klaim, ID yang mirip tetap jadi folder baru; digabung otomatis begitu isi servernya sama persis
+            mergeLikeAccounts(list)
             saveLocked(c, list, true)
         }
         notifyChanged(true)
