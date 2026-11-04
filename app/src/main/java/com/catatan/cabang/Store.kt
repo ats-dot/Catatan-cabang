@@ -426,6 +426,21 @@ object Store {
         notifyChanged(true)
     }
 
+    // Benar kalau dua ID beda tepat satu angka (satu angka hilang, bertambah, atau berubah)
+    private fun oneEdit(a: String, b: String): Boolean {
+        if (a == b) return false
+        val la = a.length
+        val lb = b.length
+        if (Math.abs(la - lb) > 1) return false
+        var i = 0
+        while (i < la && i < lb && a[i] == b[i]) i++
+        return when {
+            la == lb -> a.substring(i + 1) == b.substring(i + 1)
+            la > lb -> a.substring(i + 1) == b.substring(i)
+            else -> a.substring(i) == b.substring(i + 1)
+        }
+    }
+
     // ---------- dari APK 3: update level / keterangan ----------
     fun upsertFromClaim(c: Context, idIn: String, serverIn: String, level: String, note: String) {
         val id = idIn.trim()
@@ -435,6 +450,15 @@ object Store {
         synchronized(lock) {
             val list = loadLocked(c)
             var f = findFolder(list, id, "")
+            if (f == null) {
+                // ID dari game (benar) tidak ada. Mungkin folder dari APK 1 yang ID-nya salah baca satu angka: hanya folder yang
+                // masih "Akun baru" dan hanya kalau cocoknya tepat satu. ID folder dikoreksi, emailnya tetap
+                val cand = list.filter { it.note.trim().equals(NEW_NOTE, true) && it.id.isNotEmpty() && oneEdit(it.id, id) }
+                if (cand.size == 1) {
+                    f = cand[0]
+                    f.id = id
+                }
+            }
             if (f == null) {
                 f = Folder("", ArrayList(), id)
                 list.add(f)
