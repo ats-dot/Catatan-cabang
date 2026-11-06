@@ -1381,8 +1381,8 @@ class MainActivity : Activity() {
             chips.addView(c, cp)
         }
         sh.addView(chips, lp(10))
-        sh.addView(srv, lp(0))
-        sh.addView(tot, lp(8))
+        sh.addView(srv, lp(8))
+        sh.addView(tot, lp(10))
         srv.visibility = if (fField == 3) View.VISIBLE else View.GONE
         tot.visibility = if (fField == 3) View.VISIBLE else View.GONE
         sumBox?.visibility = if (fField == 3) View.GONE else View.VISIBLE
